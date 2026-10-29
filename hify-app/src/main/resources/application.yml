@@ -1,0 +1,113 @@
+# Hify 应用配置
+#
+# 配置单一来源：开发用 Docker Compose、生产用 Kubernetes，两者注入同一套环境变量名，
+# 因此本文件在两边通用——本地不设环境变量时全部走默认值（localhost），
+# 生产由 ConfigMap / Secret 覆盖同名变量。
+#
+# 生产覆盖示例：
+#   HIFY_DB_HOST=mysql.hify.svc
+#   HIFY_DB_PASSWORD=<来自 Secret>
+
+server:
+  port: 8080
+  # 优雅停机：SSE 长连接需要时间推完，避免滚动更新掐断对话
+  shutdown: graceful
+
+spring:
+  application:
+    name: hify
+
+  # ── 业务库：MySQL ─────────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://${HIFY_DB_HOST:localhost}:${HIFY_DB_PORT:3306}/${HIFY_DB_NAME:hify}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${HIFY_DB_USERNAME:hify}
+    password: ${HIFY_DB_PASSWORD:hify}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: hify-pool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+      # 持有超过 60s 即告警——正常请求不该持有这么久，常见于流式期间漏释放
+      leak-detection-threshold: 60000
+      max-lifetime: 1700000
+
+  # ── 缓存与协调：Redis ─────────────────────────────────────────
+  # 限流计数、分布式锁、幂等键都在这里，不能用本地缓存（多副本会不一致）
+  data:
+    redis:
+      host: ${HIFY_REDIS_HOST:localhost}
+      port: ${HIFY_REDIS_PORT:6379}
+      database: ${HIFY_REDIS_DATABASE:0}
+      password: ${HIFY_REDIS_PASSWORD:}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  lifecycle:
+    timeout-per-shutdown-phase: 60s
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+# ── 向量库：PostgreSQL + pgvector ─────────────────────────────────
+# 知识库的分段正文与向量存在这里，与业务库（MySQL）是两套数据，
+# 靠 kb_id / doc_id 逻辑关联，跨库无外键。
+# 这个数据源由 hify-knowledge 的 internal/config 创建（走 JdbcTemplate，
+# 不与 MyBatis-Plus 混用），此处只提供连接参数。
+hify:
+  vector:
+    datasource:
+      url: jdbc:postgresql://${HIFY_PG_HOST:localhost}:${HIFY_PG_PORT:5432}/${HIFY_PG_NAME:hify}
+      username: ${HIFY_PG_USERNAME:hify}
+      password: ${HIFY_PG_PASSWORD:hify}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        pool-name: hify-vector-pool
+        maximum-pool-size: 8
+        minimum-idle: 1
+        connection-timeout: 3000
+        leak-detection-threshold: 60000
+        max-lifetime: 1700000
+
+# ── MyBatis-Plus ────────────────────────────────────────────────
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 不配置 logic-delete-field：BaseDO 里刻意没有 deletedAt，
+  # 因为 @TableLogic 会给每条 SQL 追加 deleted_at IS NULL，破坏事件流表（分区表）的分区裁剪。
+  # 需要软删的表在自己的 DO 上单独声明。
+
+# ── 可观测性 ───────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: hify
+
+logging:
+  pattern:
+    # %X{traceId} 对应 shared 的 TraceContext.MDC_KEY
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{40} - %msg%n"
+  level:
+    root: INFO
+    com.hify: INFO
