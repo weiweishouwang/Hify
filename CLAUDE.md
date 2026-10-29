@@ -113,6 +113,25 @@ com.hify.<module>/
 
 **`api` 包的未来形态**：现在 `api` 是同一个 artifact 内的一个包。将来某个模块拆成独立服务时，`api` 包会**原样复制**过去，成为 RPC 契约的来源——所以它的接口签名必须「远程调用友好」（§3.2）。**这是「模块内部不用动、只改传输层」这个承诺的兑现前提，改接口签名前先想清楚这一点。**
 
+#### `hify-shared` 已落地的共享基础设施
+
+按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 106 个单元测试全绿。**
+
+| 包 | 内容 |
+|---|---|
+| `exception` | `ErrorCode`（9 个，**码值前三位 = HTTP 状态**，如 40100↔401）、`BizException` |
+| `web` | `Result`、`PageResult`、`GlobalExceptionHandler`、`PageQuery`（单页上限：普通 100 / 管理台 200） |
+| `context` | `CurrentUser`（record，userId 是 Long）、`AuthType`、`CurrentUserHolder`、`TraceContext` |
+| `id` | `IdGenerator`（ULID 26 字符 Crockford Base32，同毫秒递增保证单调） |
+| `json` | `JsonUtils`（包装容器自动配置的 ObjectMapper） |
+| `mybatis` | `BaseDO`、`AuditMetaObjectHandler` |
+| `redis` | `DistributedLock`、`IdempotentGuard`、`RateLimiter` |
+
+三个容易踩的约定：
+- **`BaseDO` 不含 `deletedAt`**——`@TableLogic` 会给每条 SQL 追加 `deleted_at IS NULL`，破坏分区表的分区裁剪。**事件流表也不继承 `BaseDO`**（分区表唯一键必须含分区列）
+- **新增任何 `isXxx()` 方法前先想 Jackson**——它会被当作布尔属性序列化进响应体（`Result.isOk()` 与 `CurrentUser.isApiKey()` 都踩过）
+- **`JsonUtils` 不要自己 `new ObjectMapper`**——第二个 mapper 会与容器里那个行为分叉（如漏注册 `JavaTimeModule`）
+
 ### 2.3 部署拓扑
 
 ```
