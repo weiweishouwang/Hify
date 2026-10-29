@@ -99,7 +99,7 @@ com.hify.<module>/
 └── internal/     controller / service / mapper / entity / converter / spi / config
 ```
 
-各层职责与硬约束（完整细则、可执行的正反例与 ArchUnit 检查代码见 `docs/superpowers/specs/2026-10-29-hify-code-organization.md`）：
+各层职责与硬约束（完整细则与可执行的正反例见 `docs/superpowers/specs/2026-10-29-hify-code-organization.md`；ArchUnit 检查代码已落地在 `hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`）：
 
 | 层 | 职责 | 硬约束 |
 |---|---|---|
@@ -296,7 +296,7 @@ mvn -pl hify-knowledge -am test               # 只测某个模块
 - 当前用户、trace id 等上下文**不得依赖 ThreadLocal 跨模块传递**，跨模块接口要显式携带
 - 认证必须无状态（JWT）或 Redis 共享 session，不得依赖单机内存 session
 - 表前缀：`ai_` `kb_` `wf_` `conv_` `mcp_` `tool_` `vec_`；不建跨模块外键
-- 用 ArchUnit 把这些边界变成 CI 里会失败的断言：禁止 import 其他模块的 `internal` 包、能力层不得反向依赖编排层、编排层不得直接访问 Mapper
+- 用 ArchUnit 把这些边界变成 CI 里会失败的断言：**`hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`**，共 10 条规则（禁止 import 其他模块的 `internal` 包、`api` 包不得含 Spring/ORM 注解或暴露 DO、不得访问其他模块的 Mapper、能力层不得反向依赖编排层、业务模块不得依赖 `hify-app`、`shared` 不得依赖业务模块）。**模块级方向由 Maven 依赖图在编译期强制，ArchUnit 强制的是「已允许方向内」的包级与字段级约束**——例如 `ai → shared` 允许，但 `ai → shared.internal` 只有 ArchUnit 能拦
 
 ### 3.3 数据库
 
