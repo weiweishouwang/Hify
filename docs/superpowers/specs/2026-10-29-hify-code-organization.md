@@ -561,17 +561,25 @@ class ModuleBoundaryTest {
         return m.matches() ? m.group(1) : packageName;
     }
 
-    /** 匹配 {@code com.hify.x.api} 与 {@code com.hify.x.api.dto}，但不匹配 {@code x.apimpl}。 */
+    /**
+     * 匹配 {@code com.hify.<module>.api} 与其子包。
+     *
+     * <p>**必须限定在 {@code com.hify} 下**：像 {@code org.mybatis.spring.mapper} 这种
+     * 第三方包名恰好也以 {@code .mapper} 结尾，不限定就会把 {@code HifyApplication}
+     * 对 MyBatis 的正常依赖误判成「跨模块访问 Mapper」。
+     */
     private static boolean isApiPackage(String pkg) {
-        return pkg.matches(".*\\.api(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.api(\\..*)?");
     }
 
+    /** 匹配 {@code com.hify.<module>.internal} 与其子包。 */
     private static boolean isInternalPackage(String pkg) {
-        return pkg.matches(".*\\.internal(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.internal(\\..*)?");
     }
 
+    /** 匹配 {@code com.hify.<module>.internal.mapper} 与其子包。 */
     private static boolean isMapperPackage(String pkg) {
-        return pkg.matches(".*\\.mapper(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.(internal\\.)?mapper(\\..*)?");
     }
 
     /** 收集「源类 → 目标类」的跨模块依赖描述，便于断言时给出可读的失败信息。 */
@@ -668,7 +676,8 @@ class ModuleBoundaryTest {
             }
             for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
                 JavaClass target = dependency.getTargetClass();
-                if (target.getPackageName().matches(".*\\.internal\\.entity(\\..*)?")) {
+                if (target.getPackageName().matches(
+                        "com\\.hify\\.[a-z0-9]+\\.internal\\.entity(\\..*)?")) {
                     violations.add(source.getFullName() + " -> " + target.getFullName());
                 }
             }
@@ -773,7 +782,7 @@ ArchUnit 运行时依赖 `slf4j-api`（Maven 会传递引入；在 Maven 之外�
 >
 > 检查代码已落到 `hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`，共 **10 条规则**。
 >
-> 验证方式：植入 7 个**可编译的**违规样例后运行，结果 **5 条规则准确报错**、5 条通过；删除样例后 10 条全绿。
+> 验证方式：把违规样例编译到 `/tmp` 下的独立目录（不进仓库），与仓库真实类一起交给 ArchUnit 扫描。
 >
 > | 规则 | 植入的违规 | 结果 |
 > |---|---|---|
@@ -784,9 +793,13 @@ ArchUnit 运行时依赖 `slf4j-api`（Maven 会传递引入；在 Maven 之外�
 > | 跨模块访问 Mapper | `agent` → `ai.internal.mapper` | ✅ 报错 |
 > | 能力层→编排层、ai→tool、tool→编排层、业务→app、shared→业务 | — | **Maven 依赖图在编译期就挡住，代码层面无法构造出违规**（见下） |
 >
+> 不带样例时 10 条全绿。
+>
 > **关键结论：模块级方向由 Maven 依赖图强制（编译期），ArchUnit 强制的是「Maven 已允许的依赖方向内」的包级与字段级约束。** 例如 `ai → shared` 是允许的，但 `ai → shared.internal` 不是——这条只有 ArchUnit 能拦。反过来 `ai → tool` 在 Maven 层面就不成立，要加这个依赖得先改 pom，那本身已经是违规。
 >
 > 因此 10 条规则分两层价值：**规则 1–5 是主力**（包级/字段级细分）；**规则 6–10 是纵深防御**（万一有人先加了 Maven 依赖，代码层的方向检查还能兜住）。
+>
+> **一个已修的误报**：包名匹配最初写成 `.*\.mapper(\..*)?`，结果第三方包 `org.mybatis.spring.mapper`（`HifyApplication` 的 `@MapperScan` 依赖它）被当成「我们某个模块的 Mapper 包」而误报。**三个包名匹配辅助方法现已全部限定在 `com.hify.<module>.*` 之下**，Mapper 精确到 `internal.mapper`。教训：包名匹配必须限定在自己的根包下，不能用宽泛的后缀匹配。
 
 ### 5.3 Spring 层：禁止循环依赖
 
