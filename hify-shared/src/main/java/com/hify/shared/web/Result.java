@@ -25,11 +25,8 @@ public class Result<T> implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 成功码。约定 0 表示成功，非 0 表示失败。 */
+    /** 成功码。约定 0 表示成功，非 0 表示失败。成功不是错误，因此不在 {@link ErrorCode} 中。 */
     public static final int SUCCESS_CODE = 0;
-
-    /** 默认失败码。业务有明确错误码时应改用 {@link #fail(int, String)} 传入。 */
-    public static final int ERROR_CODE = 500;
 
     /** 成功时的默认提示信息。子类可用。 */
     protected static final String SUCCESS_MESSAGE = "ok";
@@ -63,16 +60,6 @@ public class Result<T> implements Serializable {
         return new Result<>(SUCCESS_CODE, SUCCESS_MESSAGE, data);
     }
 
-    /** 失败，使用指定错误码。业务失败必须走这个重载，保证错误码与提示语成对出现。 */
-    public static <T> Result<T> fail(int code, String message) {
-        return new Result<>(code, message, null);
-    }
-
-    /** 失败，使用默认错误码。仅用于没有明确错误码的兜底场景。 */
-    public static <T> Result<T> fail(String message) {
-        return new Result<>(ERROR_CODE, message, null);
-    }
-
     /** 失败，使用错误码的默认文案。业务失败优先用这个重载。 */
     public static <T> Result<T> fail(ErrorCode errorCode) {
         return new Result<>(errorCode.getCode(), errorCode.getDefaultMessage(), null);
@@ -81,6 +68,17 @@ public class Result<T> implements Serializable {
     /** 失败，使用错误码但用自定义文案覆盖默认提示。 */
     public static <T> Result<T> fail(ErrorCode errorCode, String message) {
         return new Result<>(errorCode.getCode(), message, null);
+    }
+
+    /**
+     * 失败，没有更精确的错误码时的兜底，错误码取 {@link ErrorCode#INTERNAL_ERROR}。
+     *
+     * <p>刻意不提供 {@code fail(int, String)} 重载——它允许调用点直接写错误码字面量，
+     * 会让错误码散落到各处（见 CLAUDE.md §3.1 E6）。需要新的错误码时，
+     * 在 {@link ErrorCode} 里加枚举常量，而不是在调用点造数字。
+     */
+    public static <T> Result<T> fail(String message) {
+        return fail(ErrorCode.INTERNAL_ERROR, message);
     }
 
     /**

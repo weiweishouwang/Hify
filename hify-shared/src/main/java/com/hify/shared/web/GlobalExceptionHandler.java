@@ -173,7 +173,10 @@ public class GlobalExceptionHandler {
     private ErrorCode mapStatus(int status) {
         HttpStatus httpStatus = HttpStatus.resolve(status);
         if (httpStatus == null) {
-            return status >= 400 && status < 500 ? ErrorCode.PARAM_ERROR : ErrorCode.INTERNAL_ERROR;
+            // 非标准状态码（HttpStatus 枚举里没有）：按 4xx/5xx 大类归类
+            boolean clientError = status >= HttpStatus.BAD_REQUEST.value()
+                    && status < HttpStatus.INTERNAL_SERVER_ERROR.value();
+            return clientError ? ErrorCode.PARAM_ERROR : ErrorCode.INTERNAL_ERROR;
         }
         return switch (httpStatus) {
             case UNAUTHORIZED -> ErrorCode.UNAUTHORIZED;

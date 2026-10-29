@@ -242,6 +242,7 @@ mvn -pl hify-knowledge -am test               # 只测某个模块
 - **E5** `@Transactional` 默认**只回滚 `RuntimeException`**（需 `rollbackFor = Exception.class`）；**事务方法内禁止调用模型、MCP、工具执行等慢能力**——它们会长时间持有数据库连接
 - **E6** **异常处理必须使用 `ErrorCode` 枚举，禁止硬编码错误码**——错误码字面量和 HTTP 状态码都不许写死。业务失败一律 `throw new BizException(ErrorCode.XXX, ...)`，响应一律 `Result.fail(ErrorCode.XXX, ...)`，HTTP 状态码取 `errorCode.getHttpStatus()`；需要新增错误场景时在 `ErrorCode` 里加枚举常量，不要在调用点造数字
   ❌ `throw new BizException(40001, "参数错误")` / `Result.fail(400, "参数错误")` / `ResponseEntity.status(400)`
+  **（`Result` 刻意不提供 `fail(int, String)` 重载，错误码字面量在编译期就写不进去）**
 
 **日志**
 - **L1** 必须用 `{}` 占位符，禁止字符串拼接（拼接无视日志级别仍会执行）

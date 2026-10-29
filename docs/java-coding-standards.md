@@ -163,6 +163,7 @@ Result.fail(400, "参数错误");
 // ❌ 硬编码 HTTP 状态码
 return ResponseEntity.status(400).body(Result.fail(ErrorCode.PARAM_ERROR));
 ```
+**`Result` 刻意不提供 `fail(int, String)` 重载**——错误码字面量在编译期就写不进去，规则由编译器保证而不是靠自觉。
 
 ---
 
