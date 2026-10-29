@@ -60,17 +60,25 @@ class ModuleBoundaryTest {
         return m.matches() ? m.group(1) : packageName;
     }
 
-    /** 匹配 {@code com.hify.x.api} 与 {@code com.hify.x.api.dto}，但不匹配 {@code x.apimpl}。 */
+    /**
+     * 匹配 {@code com.hify.<module>.api} 与其子包。
+     *
+     * <p>**必须限定在 {@code com.hify} 下**：像 {@code org.mybatis.spring.mapper} 这种
+     * 第三方包名恰好也以 {@code .mapper} 结尾，不限定就会把 {@code HifyApplication}
+     * 对 MyBatis 的正常依赖误判成「跨模块访问 Mapper」。
+     */
     private static boolean isApiPackage(String pkg) {
-        return pkg.matches(".*\\.api(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.api(\\..*)?");
     }
 
+    /** 匹配 {@code com.hify.<module>.internal} 与其子包。 */
     private static boolean isInternalPackage(String pkg) {
-        return pkg.matches(".*\\.internal(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.internal(\\..*)?");
     }
 
+    /** 匹配 {@code com.hify.<module>.internal.mapper} 与其子包。 */
     private static boolean isMapperPackage(String pkg) {
-        return pkg.matches(".*\\.mapper(\\..*)?");
+        return pkg.matches("com\\.hify\\.[a-z0-9]+\\.(internal\\.)?mapper(\\..*)?");
     }
 
     /** 收集「源类 → 目标类」的跨模块依赖描述，便于断言时给出可读的失败信息。 */
@@ -167,7 +175,8 @@ class ModuleBoundaryTest {
             }
             for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
                 JavaClass target = dependency.getTargetClass();
-                if (target.getPackageName().matches(".*\\.internal\\.entity(\\..*)?")) {
+                if (target.getPackageName().matches(
+                        "com\\.hify\\.[a-z0-9]+\\.internal\\.entity(\\..*)?")) {
                     violations.add(source.getFullName() + " -> " + target.getFullName());
                 }
             }
