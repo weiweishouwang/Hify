@@ -1,6 +1,6 @@
 # Java 编码规范（20 条）
 
-> 基于《阿里巴巴 Java 开发手册》提炼，聚焦命名、异常处理、日志、并发。
+> 基于《阿里巴巴 Java 开发手册》提炼，聚焦命名、异常处理、日志、并发。共 21 条。
 > **本节可直接复制进任意 Java 项目的 CLAUDE.md。** 规则用「必须 / 禁止 / 应该」表述，每条配正反例——AI 可据此直接产出符合规范的代码。
 > 与项目自身约定冲突时，**以项目约定为准**（项目约定通常更严）。
 
@@ -60,7 +60,7 @@ public class AgentStatusEnum { public static final AgentStatusEnum ENABLED = new
 
 ---
 
-## 二、异常处理（5 条）
+## 二、异常处理（6 条）
 
 **E1 · 异常不用于流程控制**
 能用 `if` 判断的分支不要用异常表达；异常只表示"出错了"。
@@ -148,6 +148,20 @@ public void chat(String question) {
 // ❌
 @Transactional                    // 抛 IOException 时不会回滚
 public void importDoc(InputStream in) throws IOException { ... }
+```
+
+**E6 · 异常处理必须使用 `ErrorCode` 枚举，禁止硬编码错误码**
+错误码字面量和 HTTP 状态码都不许写死。业务失败一律 `throw new BizException(ErrorCode.XXX, ...)`，响应一律 `Result.fail(ErrorCode.XXX, ...)`，HTTP 状态码取 `errorCode.getHttpStatus()`；需要新增错误场景时在 `ErrorCode` 里加枚举常量，不要在调用点造数字。
+```java
+// ✅
+throw new BizException(ErrorCode.AGENT_NOT_FOUND, "Agent 不存在: " + agentId);
+return ResponseEntity.status(ErrorCode.AGENT_NOT_FOUND.getHttpStatus())
+        .body(Result.fail(ErrorCode.AGENT_NOT_FOUND, "Agent 不存在"));
+// ❌ 错误码字面量
+throw new BizException(40001, "参数错误");
+Result.fail(400, "参数错误");
+// ❌ 硬编码 HTTP 状态码
+return ResponseEntity.status(400).body(Result.fail(ErrorCode.PARAM_ERROR));
 ```
 
 ---
@@ -272,6 +286,7 @@ new Thread(() -> doWork()).start();
 
 - [ ] 命名符合 N1–N5；布尔字段没有 `is` 前缀；没有魔法值
 - [ ] 异常不用于流程控制；没有静默吞异常；重抛保留了 `cause`
+- [ ] 错误码全部取自 `ErrorCode` 枚举，没有硬编码错误码或 HTTP 状态码
 - [ ] 资源用 try-with-resources；自定义异常继承 `RuntimeException` 且带错误码
 - [ ] `@Transactional` 标了 `rollbackFor`；事务方法内没有慢调用
 - [ ] 日志用占位符；异常带堆栈；没有 `System.out`；敏感信息已脱敏

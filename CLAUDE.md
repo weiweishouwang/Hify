@@ -218,7 +218,7 @@ mvn -pl hify-knowledge -am test               # 只测某个模块
 
 **写代码前先读 §3，以及对应的详细规范文档。**
 
-### 3.1 Java 通用规范（20 条）
+### 3.1 Java 通用规范（21 条）
 
 基于《阿里巴巴 Java 开发手册》提炼。完整版（含更多示例）见 `docs/java-coding-standards.md`。
 
@@ -240,6 +240,8 @@ mvn -pl hify-knowledge -am test               # 只测某个模块
 - **E4** 自定义异常继承 `RuntimeException`，必须有 `serialVersionUID` + 错误码 + 两组构造器；业务失败靠**错误码**区分不靠 message 文本
   ❌ `class BizException extends Exception`（检查异常，调用方被迫 catch）
 - **E5** `@Transactional` 默认**只回滚 `RuntimeException`**（需 `rollbackFor = Exception.class`）；**事务方法内禁止调用模型、MCP、工具执行等慢能力**——它们会长时间持有数据库连接
+- **E6** **异常处理必须使用 `ErrorCode` 枚举，禁止硬编码错误码**——错误码字面量和 HTTP 状态码都不许写死。业务失败一律 `throw new BizException(ErrorCode.XXX, ...)`，响应一律 `Result.fail(ErrorCode.XXX, ...)`，HTTP 状态码取 `errorCode.getHttpStatus()`；需要新增错误场景时在 `ErrorCode` 里加枚举常量，不要在调用点造数字
+  ❌ `throw new BizException(40001, "参数错误")` / `Result.fail(400, "参数错误")` / `ResponseEntity.status(400)`
 
 **日志**
 - **L1** 必须用 `{}` 占位符，禁止字符串拼接（拼接无视日志级别仍会执行）
@@ -265,7 +267,7 @@ mvn -pl hify-knowledge -am test               # 只测某个模块
 
 ### 3.2 分层与跨模块
 
-- 跨模块**只能**通过对方的**公开契约**调用——`api` 包（interface + DTO），以及 `hify-shared` 的 `web`（统一响应体 `Result` / `PageResult`）与 `exception`（`ErrorCode` / `BizException`）两个包，所有模块都要引用；**禁止**跨模块调用 Mapper、直接查对方的表、或 import 对方的 `internal`
+- 跨模块**只能**通过对方的**公开契约**调用——`api` 包（interface + DTO），以及 `hify-shared` 的 `web`（统一响应体 `Result` / `PageResult`、`GlobalExceptionHandler`）与 `exception`（`ErrorCode` / `BizException`）两个包，所有模块都要引用；**禁止**跨模块调用 Mapper、直接查对方的表、或 import 对方的 `internal`
 - **跨模块只传 DTO，不传 MyBatis-Plus 实体**。DTO 不带 ORM 注解、无循环引用、字段可 JSON 序列化
 - `api` 接口签名必须「远程调用友好」：参数与返回值全是 DTO、无重载、参数 ≤ 3 个、无 checked exception、无业务 default 方法。**判据：能否被 Feign / Dubbo 直接实现**
 - `@Transactional` 只出现在 `internal/service` 层
