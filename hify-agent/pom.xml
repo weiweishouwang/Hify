@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-agent</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-agent</name>
+  <description>Agent 配置的存取与组装。只负责组装，不执行推理、不调用工具</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+    <!-- 取模型配置 -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-ai</artifactId>
+    </dependency>
+    <!-- 列出可用工具（ToolCatalog），但不执行 -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-tool</artifactId>
+    </dependency>
+    <!-- 列出可选知识库（KnowledgeCatalog） -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-knowledge</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    不变量：本模块不执行推理、不调用工具。
+    执行发生在编排层（hify-conversation / hify-workflow）。
+  -->
+</project>

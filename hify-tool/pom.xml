@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-tool</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-tool</name>
+  <description>Tool 抽象 + ToolProvider SPI + 内置与 HTTP 两种来源</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    不变量：hify-tool 不依赖 hify-mcp。
+    ToolProvider SPI 定义在本模块的 api 包，由 mcp / http / builtin 各自实现，
+    本模块通过注入 List<ToolProvider> 收集实现 —— 方向是 mcp → tool，反过来会成环。
+  -->
+</project>

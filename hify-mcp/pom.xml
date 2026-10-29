@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-mcp</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-mcp</name>
+  <description>MCP client、server 配置管理、MCP 来源的 ToolProvider</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+    <!-- 实现 tool 模块 api 包里的 ToolProvider SPI -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-tool</artifactId>
+    </dependency>
+
+    <!--
+      MCP Java SDK：官方但仅 Tier 2（官方 README：Server 40/40，Client 3/4 scenarios、9/10 checks）。
+      第 1 周必须做 spike：stdio + Streamable HTTP 双传输、tools/list 分页、重连语义。
+      SDK 默认 HTTP 传输是阻塞的 JDK HttpClient，调用必须 subscribeOn(boundedElastic) 隔离，
+      否则一次慢调用会冻结所有 SSE 流。
+    -->
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId>
+      <artifactId>mcp</artifactId>
+    </dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-ai</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-ai</name>
+  <description>模型接入点管理 + 模型调用（chat / embedding / 流式补全）。只提供纯能力，不做组合</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    不变量：hify-ai 不得依赖 knowledge / tool / agent / mcp / conversation / workflow。
+    任何组合逻辑（知识库注入、工具调用循环、记忆）都不许出现在本模块，否则 ai ↔ knowledge 成环。
+  -->
+</project>

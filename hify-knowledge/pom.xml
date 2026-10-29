@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-knowledge</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-knowledge</name>
+  <description>TXT 上传、固定分块、embedding、向量检索。唯一同时访问 MySQL 与 PostgreSQL 的模块</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+    <!-- embedding 调用走 ai 模块的 ModelCallService -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-ai</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    双库说明：
+      MySQL      —— 文档元数据与状态机（kb_document）
+      PostgreSQL —— 分段正文与向量（vec_chunk），HNSW 索引
+    PG 侧访问一律用 NamedParameterJdbcTemplate 手写 SQL，不用 MyBatis-Plus 的 BaseMapper
+    （pgvector 的 <=> 运算符与 HNSW 查询 MP 生成不了）。
+    跨库写入必须可重入；删除顺序固定为「MySQL 软删 → 异步删 PG → MySQL 硬删」。
+  -->
+</project>

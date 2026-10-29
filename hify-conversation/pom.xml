@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-conversation</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-conversation</name>
+  <description>会话、消息、流式对话编排</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-ai</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-tool</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-knowledge</artifactId>
+    </dependency>
+    <!-- 读取 Agent 配置（选模型 / 绑工具 / 绑知识库 / 提示词） -->
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-agent</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    不变量：本模块与 hify-workflow 互不依赖（两者是平行的编排层）。
+    SSE 写出必须 publishOn 到专用调度器，把 servlet 写出移出 Reactor 事件循环。
+  -->
+</project>

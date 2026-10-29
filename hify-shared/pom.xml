@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-shared</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-shared</name>
+  <description>共享内核：异常体系、错误码、当前用户上下文、trace id；平台域的用户与密钥</description>
+
+  <!--
+    叶子模块，不依赖任何业务模块。
+    承载 user / api_key 两张平台表 —— 用户域将来长大后可独立成 hify-user 模块，届时是纯搬迁。
+  -->
+</project>
