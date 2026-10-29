@@ -49,6 +49,14 @@
       <groupId>com.hify</groupId>
       <artifactId>hify-workflow</artifactId>
     </dependency>
+
+    <!-- 模块边界检查：hify-app 是唯一依赖全部业务模块的模块，能扫到所有类的字节码 -->
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>1.5.1</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

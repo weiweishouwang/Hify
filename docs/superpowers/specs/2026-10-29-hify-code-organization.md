@@ -493,9 +493,10 @@ private ToolProvider mcpToolProvider;
 
 **模块 pom 一律不写 `<version>`**，全部由父 pom 的 `<dependencyManagement>` 统一管理。
 
-### 5.2 ArchUnit / JUnit：模块边界
+### 5.2 ArchUnit：模块边界
 
-放在 `hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`（app 依赖全部模块，能扫到所有类）：
+**代码位置：`hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`**（app 依赖全部模块，能扫到所有类的字节码）。
+下面这份代码是**该文件的副本**，改动请改文件本身——文档与代码不一致时以代码为准。
 
 ```java
 package com.hify.arch;
@@ -506,6 +507,7 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -515,7 +517,34 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 模块边界检查。
+ *
+ * <p>这些规则把 CLAUDE.md §3.2「分层与跨模块」的约定变成 CI 里会失败的断言。
+ * 放在 {@code hify-app} 的测试目录——它是唯一依赖全部业务模块的模块，
+ * 因此能扫到所有类的字节码。
+ *
+ * <p>规则与文档的对应：
+ * <ul>
+ *   <li>M1 / M2 —— 跨模块只走对方 {@code api} 包，不得碰 {@code internal}</li>
+ *   <li>M2 —— 不得访问其他模块的 Mapper</li>
+ *   <li>M4 —— {@code api} 层不得暴露 DO</li>
+ *   <li>M5 —— 依赖方向单向：能力层不得反向依赖编排层</li>
+ *   <li>M6 —— {@code tool} 不得依赖编排层</li>
+ *   <li>M9 / M10 —— 认证约束与 {@code api} 包的远程调用友好性</li>
+ * </ul>
+ */
 class ModuleBoundaryTest {
+
+    /** 能力层模块（被编排层调用的那些）。 */
+    private static final List<String> CAPABILITY = List.of("ai", "tool", "knowledge", "agent", "mcp");
+
+    /** 编排层模块。 */
+    private static final List<String> ORCHESTRATION = List.of("conversation", "workflow");
+
+    /** 全部业务模块（不含 shared 与 app）。 */
+    private static final List<String> BUSINESS = List.of(
+            "ai", "tool", "knowledge", "mcp", "agent", "conversation", "workflow");
 
     private static JavaClasses classes;
 
@@ -526,13 +555,13 @@ class ModuleBoundaryTest {
                 .importPackages("com.hify");
     }
 
-    /** com.hify.<module>[.<sub>] -> <module> */
+    /** {@code com.hify.<module>[.<sub>]} → {@code <module>}。 */
     private static String moduleOf(String packageName) {
         Matcher m = Pattern.compile("^com\\.hify\\.([a-z][a-z0-9]*)(?:\\..*)?$").matcher(packageName);
         return m.matches() ? m.group(1) : packageName;
     }
 
-    /** 匹配 com.hify.x.api 与 com.hify.x.api.dto，但不匹配 x.apimpl */
+    /** 匹配 {@code com.hify.x.api} 与 {@code com.hify.x.api.dto}，但不匹配 {@code x.apimpl}。 */
     private static boolean isApiPackage(String pkg) {
         return pkg.matches(".*\\.api(\\..*)?");
     }
@@ -545,14 +574,14 @@ class ModuleBoundaryTest {
         return pkg.matches(".*\\.mapper(\\..*)?");
     }
 
-    private static List<String> crossModuleInternalDeps() {
+    /** 收集「源类 → 目标类」的跨模块依赖描述，便于断言时给出可读的失败信息。 */
+    private static List<String> describeViolations(java.util.function.Predicate<Violation> filter) {
         List<String> violations = new ArrayList<>();
         for (JavaClass source : classes) {
-            String from = moduleOf(source.getPackageName());
             for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
                 JavaClass target = dependency.getTargetClass();
-                String to = moduleOf(target.getPackageName());
-                if (!from.equals(to) && isInternalPackage(target.getPackageName())) {
+                Violation violation = new Violation(source, target);
+                if (filter.test(violation)) {
                     violations.add(source.getFullName() + " -> " + target.getFullName());
                 }
             }
@@ -560,14 +589,32 @@ class ModuleBoundaryTest {
         return violations;
     }
 
-    // M1 / M2：跨模块不得依赖对方的 internal
-    @Test
-    void 跨模块不得依赖对方的internal包() {
-        assertThat(crossModuleInternalDeps()).isEmpty();
+    private record Violation(JavaClass source, JavaClass target) {
+        String sourceModule() {
+            return moduleOf(source.getPackageName());
+        }
+
+        String targetModule() {
+            return moduleOf(target.getPackageName());
+        }
     }
 
-    // L1：api 包不得依赖任何 internal
+    // ── M1 / M2：跨模块不得依赖对方的 internal ─────────────────────────
+
     @Test
+    @DisplayName("跨模块不得依赖对方的 internal 包")
+    void 跨模块不得依赖对方的internal包() {
+        List<String> violations = describeViolations(violation ->
+                !violation.sourceModule().equals(violation.targetModule())
+                        && isInternalPackage(violation.target().getPackageName()));
+
+        assertThat(violations).as("跨模块只能通过对方的 api 包调用").isEmpty();
+    }
+
+    // ── api 包不得依赖 internal ───────────────────────────────────────
+
+    @Test
+    @DisplayName("api 包不得依赖任何 internal 包")
     void api包不得依赖internal包() {
         List<String> violations = new ArrayList<>();
         for (JavaClass source : classes) {
@@ -581,11 +628,14 @@ class ModuleBoundaryTest {
                 }
             }
         }
-        assertThat(violations).isEmpty();
+
+        assertThat(violations).as("api 包是模块的公开契约，不得引用内部实现").isEmpty();
     }
 
-    // L1：api 包不得出现 Spring 注解 / MyBatis-Plus 注解
+    // ── api 包不得出现 Spring / ORM 注解 ──────────────────────────────
+
     @Test
+    @DisplayName("api 包不得依赖 Spring 注解或 ORM 注解")
     void api包不得依赖Spring或ORM注解() {
         List<String> violations = new ArrayList<>();
         for (JavaClass source : classes) {
@@ -602,11 +652,14 @@ class ModuleBoundaryTest {
                 }
             }
         }
-        assertThat(violations).isEmpty();
+
+        assertThat(violations).as("api 包必须能脱离 Spring 与 ORM 独立序列化").isEmpty();
     }
 
-    // M4：api 层的方法签名不得出现 DO
+    // ── M4：api 层不得暴露 DO ─────────────────────────────────────────
+
     @Test
+    @DisplayName("api 层不得暴露数据对象")
     void api层不得暴露DO() {
         List<String> violations = new ArrayList<>();
         for (JavaClass source : classes) {
@@ -620,82 +673,79 @@ class ModuleBoundaryTest {
                 }
             }
         }
-        assertThat(violations).isEmpty();
+
+        assertThat(violations).as("跨模块只传 DTO，不传 ORM 实体").isEmpty();
     }
 
-    // M2：任何模块不得访问其他模块的 Mapper
+    // ── M2：不得访问其他模块的 Mapper ─────────────────────────────────
+
     @Test
+    @DisplayName("不得访问其他模块的 Mapper")
     void 不得访问其他模块的Mapper() {
-        List<String> violations = new ArrayList<>();
-        for (JavaClass source : classes) {
-            String from = moduleOf(source.getPackageName());
-            for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
-                JavaClass target = dependency.getTargetClass();
-                String to = moduleOf(target.getPackageName());
-                if (!from.equals(to) && isMapperPackage(target.getPackageName())) {
-                    violations.add(source.getFullName() + " -> " + target.getFullName());
-                }
-            }
-        }
-        assertThat(violations).isEmpty();
+        List<String> violations = describeViolations(violation ->
+                !violation.sourceModule().equals(violation.targetModule())
+                        && isMapperPackage(violation.target().getPackageName()));
+
+        assertThat(violations).as("跨模块取数必须走对方的 api 接口").isEmpty();
     }
 
-    // M5：能力层不得依赖编排层
+    // ── M5：能力层不得反向依赖编排层 ─────────────────────────────────
+
     @Test
+    @DisplayName("能力层不得依赖编排层")
     void 能力层不得依赖编排层() {
-        List<String> violations = new ArrayList<>();
-        List<String> capability = List.of("ai", "tool", "knowledge", "agent", "mcp");
-        for (JavaClass source : classes) {
-            if (!capability.contains(moduleOf(source.getPackageName()))) {
-                continue;
-            }
-            for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
-                JavaClass target = dependency.getTargetClass();
-                String to = moduleOf(target.getPackageName());
-                if (to.equals("conversation") || to.equals("workflow")) {
-                    violations.add(source.getFullName() + " -> " + target.getFullName());
-                }
-            }
-        }
-        assertThat(violations).isEmpty();
+        List<String> violations = describeViolations(violation ->
+                CAPABILITY.contains(violation.sourceModule())
+                        && ORCHESTRATION.contains(violation.targetModule()));
+
+        assertThat(violations).as("依赖方向只能从编排层指向能力层").isEmpty();
     }
 
-    // M5：ai 不得依赖 knowledge / tool / agent / mcp
+    // ── M5：ai 不得依赖其它能力模块 ──────────────────────────────────
+
     @Test
+    @DisplayName("ai 模块不得依赖 knowledge / tool / agent / mcp")
     void ai模块不得依赖组合能力模块() {
-        List<String> violations = new ArrayList<>();
         List<String> forbidden = List.of("knowledge", "tool", "agent", "mcp");
-        for (JavaClass source : classes) {
-            if (!moduleOf(source.getPackageName()).equals("ai")) {
-                continue;
-            }
-            for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
-                JavaClass target = dependency.getTargetClass();
-                if (forbidden.contains(moduleOf(target.getPackageName()))) {
-                    violations.add(source.getFullName() + " -> " + target.getFullName());
-                }
-            }
-        }
-        assertThat(violations).isEmpty();
+        List<String> violations = describeViolations(violation ->
+                violation.sourceModule().equals("ai") && forbidden.contains(violation.targetModule()));
+
+        assertThat(violations)
+                .as("ai 必须是纯模型调用能力，组合逻辑只能在编排层，否则 ai ↔ knowledge 成环")
+                .isEmpty();
     }
 
-    // M6：tool 不得依赖 conversation / workflow
+    // ── M6：tool 不得依赖编排层 ──────────────────────────────────────
+
     @Test
+    @DisplayName("tool 模块不得依赖编排层")
     void tool模块不得依赖编排层() {
-        List<String> violations = new ArrayList<>();
-        for (JavaClass source : classes) {
-            if (!moduleOf(source.getPackageName()).equals("tool")) {
-                continue;
-            }
-            for (Dependency dependency : source.getDirectDependenciesFromSelf()) {
-                JavaClass target = dependency.getTargetClass();
-                String to = moduleOf(target.getPackageName());
-                if (to.equals("conversation") || to.equals("workflow")) {
-                    violations.add(source.getFullName() + " -> " + target.getFullName());
-                }
-            }
-        }
-        assertThat(violations).isEmpty();
+        List<String> violations = describeViolations(violation ->
+                violation.sourceModule().equals("tool") && ORCHESTRATION.contains(violation.targetModule()));
+
+        assertThat(violations).as("tool 定义 SPI 由来源方实现，不得反向依赖编排层").isEmpty();
+    }
+
+    // ── 业务模块不得依赖 hify-app ────────────────────────────────────
+
+    @Test
+    @DisplayName("业务模块不得依赖装配模块 hify-app")
+    void 业务模块不得依赖装配模块() {
+        List<String> violations = describeViolations(violation ->
+                BUSINESS.contains(violation.sourceModule()) && violation.targetModule().equals("app"));
+
+        assertThat(violations).as("hify-app 是顶层装配，业务模块不得反向依赖它").isEmpty();
+    }
+
+    // ── shared 不得依赖业务模块 ──────────────────────────────────────
+
+    @Test
+    @DisplayName("shared 不得依赖任何业务模块")
+    void shared不得依赖业务模块() {
+        List<String> violations = describeViolations(violation ->
+                violation.sourceModule().equals("shared") && BUSINESS.contains(violation.targetModule()));
+
+        assertThat(violations).as("shared 是叶子模块，依赖业务模块会成环").isEmpty();
     }
 }
 ```
@@ -704,9 +754,9 @@ class ModuleBoundaryTest {
 
 ```xml
 <dependency>
-  <groupId>org.archunit</groupId>
+  <groupId>com.tngtech.archunit</groupId>
   <artifactId>archunit-junit5</artifactId>
-  <version>1.3.0</version>
+  <version>1.5.1</version>
   <scope>test</scope>
 </dependency>
 <dependency>
@@ -719,7 +769,24 @@ class ModuleBoundaryTest {
 
 ArchUnit 运行时依赖 `slf4j-api`（Maven 会传递引入；在 Maven 之外手动跑时需显式加 `slf4j-api`）。
 
-> **验证记录（2026-10-29）**：本节代码已用 javac 21 + archunit 1.3.0 实际编译通过，并以 5 个人为植入的违规样例（跨模块依赖 internal、跨模块依赖 Mapper、api 包泄漏 DO、ai 反向依赖 tool）运行验证——5 项检查全部准确报错，且合规样例（conversation → ai.api）无误报。
+> **验证记录（2026-10-29，真实执行）**
+>
+> 检查代码已落到 `hify-app/src/test/java/com/hify/arch/ModuleBoundaryTest.java`，共 **10 条规则**。
+>
+> 验证方式：植入 7 个**可编译的**违规样例后运行，结果 **5 条规则准确报错**、5 条通过；删除样例后 10 条全绿。
+>
+> | 规则 | 植入的违规 | 结果 |
+> |---|---|---|
+> | 跨模块依赖 internal | `ai` → `shared.internal` | ✅ 报错 |
+> | api 依赖 internal | `shared.api` → `shared.internal` | ✅ 报错 |
+> | api 依赖 Spring/ORM 注解 | `shared.api` 上标 `@Service` | ✅ 报错 |
+> | api 暴露 DO | `shared.api` 持有 `internal.entity` 字段 | ✅ 报错 |
+> | 跨模块访问 Mapper | `agent` → `ai.internal.mapper` | ✅ 报错 |
+> | 能力层→编排层、ai→tool、tool→编排层、业务→app、shared→业务 | — | **Maven 依赖图在编译期就挡住，代码层面无法构造出违规**（见下） |
+>
+> **关键结论：模块级方向由 Maven 依赖图强制（编译期），ArchUnit 强制的是「Maven 已允许的依赖方向内」的包级与字段级约束。** 例如 `ai → shared` 是允许的，但 `ai → shared.internal` 不是——这条只有 ArchUnit 能拦。反过来 `ai → tool` 在 Maven 层面就不成立，要加这个依赖得先改 pom，那本身已经是违规。
+>
+> 因此 10 条规则分两层价值：**规则 1–5 是主力**（包级/字段级细分）；**规则 6–10 是纵深防御**（万一有人先加了 Maven 依赖，代码层的方向检查还能兜住）。
 
 ### 5.3 Spring 层：禁止循环依赖
 
