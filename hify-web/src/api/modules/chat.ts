@@ -1,5 +1,5 @@
-import { API_BASE_URL } from '../client'
-import { getToken } from '../token'
+import { API_BASE_URL, API_PREFIX } from '@/utils/request'
+import { getToken } from '@/utils/token'
 import { isDone, streamSse, type SseEvent } from '../sse'
 import type { ToolCall } from '@/types/chat'
 
@@ -37,7 +37,7 @@ export function streamChat(
 ): Promise<void> {
   const token = getToken()
   return streamSse({
-    url: `${API_BASE_URL}/conversations/${encodeURIComponent(sessionId)}/messages`,
+    url: `${API_BASE_URL}${API_PREFIX}/conversations/${encodeURIComponent(sessionId)}/messages`,
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: { content },

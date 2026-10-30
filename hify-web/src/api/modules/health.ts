@@ -1,6 +1,6 @@
-import { request } from '../client'
+import { API_PREFIX, get } from '@/utils/request'
 
 /** GET /api/v1/health —— 后端存活探针，返回一句状态文案。 */
 export function getHealth(): Promise<string> {
-  return request<string>({ method: 'GET', url: '/health' })
+  return get<string>(`${API_PREFIX}/health`)
 }

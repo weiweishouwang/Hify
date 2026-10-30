@@ -3,7 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '@/api/modules/auth'
-import { ApiError } from '@/api/client'
+import { ApiError } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { newLocalId } from '@/utils/id'
 
@@ -33,8 +33,12 @@ async function submit(): Promise<void> {
     user.setProfile({ id: result.id, username: result.username, admin: result.admin })
     router.push(redirectTarget())
   } catch (error) {
-    const message = error instanceof ApiError ? error.message : '登录失败'
-    ElMessage.error(message)
+    // 业务错误已经由 request.ts 的响应拦截器提示过了，这里只兜底非 ApiError 的情况，
+    // 免得弹两次 toast
+    if (!(error instanceof ApiError)) {
+      console.error('登录失败', error)
+      ElMessage.error('登录失败，请稍后重试')
+    }
   } finally {
     submitting.value = false
   }

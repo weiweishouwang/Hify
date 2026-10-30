@@ -1,12 +1,12 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { clearToken, getToken, setToken } from '@/api/token'
+import { clearToken, getToken, setToken } from '@/utils/token'
 import type { CurrentUserInfo } from '@/api/modules/auth'
 
 /**
  * 当前用户。
  *
- * 令牌以 localStorage 为准（api/token.ts 是唯一真源，Pinia 只是它的内存镜像），
+ * 令牌以 localStorage 为准（utils/token.ts 是唯一真源，Pinia 只是它的内存镜像），
  * 刷新页面后状态从 localStorage 恢复。
  */
 export const useUserStore = defineStore('user', () => {

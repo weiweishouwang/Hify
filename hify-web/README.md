@@ -25,18 +25,33 @@ VITE_API_PROXY_TARGET=http://localhost:8082 npm run dev
 
 ```
 src/
-├── api/           接口封装：client.ts（axios）+ sse.ts（fetch 流）+ modules/
+├── api/           SSE 客户端（sse.ts）+ modules/（按后端模块分文件）
 ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
 ├── components/    业务组件
 ├── layouts/       AppLayout
 ├── stores/        Pinia：user / conversation / connection
 ├── router/        路由表 + 守卫
 ├── types/         与后端 DTO 对齐的类型
-├── utils/         小工具
+├── utils/         request.ts（axios 实例 + 拦截器）、token.ts、id.ts
 └── styles/        全局样式
 ```
 
 约定见仓库根目录的 `CLAUDE.md`（§2.5 前端结构、§3.6 前端规范）。
+
+## 请求怎么发
+
+统一走 `utils/request.ts`：
+
+```ts
+import { API_PREFIX, get, post } from '@/utils/request'
+
+const models = await get<Model[]>(`${API_PREFIX}/models`)
+const created = await post<Model>(`${API_PREFIX}/models`, payload)
+```
+
+- baseURL 是 `/api`，实际路径要带 `/v1` 前缀，完整地址 `/api/v1/xxx`
+- 响应拦截器**自动解包出 `data`**，失败时 `ElMessage.error` 提示后 reject —— 调用方不要再解包、不要再弹一次 toast
+- 成功码是 **`code = 0`**（后端 `Result.SUCCESS_CODE`），不是 200；200 也接受，兼容 HTTP 风格返回体
 
 ## 两个容易踩的坑
 

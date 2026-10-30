@@ -216,14 +216,14 @@ hify-web/
 ├── index.html         Vite 入口
 ├── env.d.ts           Vite 环境变量类型
 └── src/
-    ├── api/           接口封装：client.ts（axios 实例）+ sse.ts（fetch + ReadableStream）+ modules/（按后端模块分文件）
+    ├── api/           SSE 客户端（sse.ts）+ modules/（按后端模块分文件）
     ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
     ├── components/    业务组件：消息气泡、工具调用中间态、占位面板
     ├── layouts/       AppLayout（侧边栏 + 顶栏）
     ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
     ├── router/        路由表 + 登录守卫
     ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
-    ├── utils/         无状态小工具
+    ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts（令牌存取）、id.ts
     └── styles/        全局样式与 CSS 变量
 ```
 
@@ -231,7 +231,7 @@ hify-web/
 - **对话页是唯一的自定义界面**：消息气泡 + 流式增量渲染 + 工具调用中间态
 - **SSE 客户端封在 `api/sse.ts` 统一提供** —— 原生 `EventSource` 只支持 GET 且不能带 header/body，而对话接口需要 POST + body + token，所以必须用 `fetch` + `ReadableStream` 手动解析 SSE 帧。**帧解析有单测**（`src/api/__tests__/sse.test.ts`：起真的 http 服务按字节吐帧，覆盖跨 chunk 拆帧、多字节字符跨边界、CRLF 分隔符、心跳注释、`[DONE]`）
 - **连接状态归 Pinia 管**：`stores/connection.ts` 持有唯一的 `AbortController`，重新发送先掐断上一条；**页面卸载必须 `abort()`**，否则连接泄漏
-- **令牌存放在 `api/token.ts`** —— api 层不 import Pinia（否则 api ↔ stores 循环依赖），路由守卫只看「有没有令牌」
+- **令牌存放在 `utils/token.ts`** —— utils 层不 import Pinia（否则 utils/api ↔ stores 循环依赖），路由守卫只看「有没有令牌」
 - 静态资源由 nginx 托管并带 hash 长缓存；浏览器侧始终同源（`/api` 与 `/` 都走 Ingress）
 - **认证方案还没定**（见 §五）：登录页按「用户名 + 密码换令牌」实现，将来若选 OIDC 只换登录页，令牌存取与守卫不用动
 
@@ -398,8 +398,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 
 ### 3.6 前端规范
 
-- **类型对齐**：后端 DTO 在 `src/types/` 下有对应 TS 类型，字段名与后端一致；`Result<T>` / `PageResult<T>` 的结构必须与 `hify-shared` 的 `web.Result` / `web.PageResult` 对齐（`code = 0` 成功，错误码前三位等于 HTTP 状态）
-- **接口调用只走 `api/client.ts` 的 `request<T>()`** —— 它负责拆 `Result` 外壳并在 `code !== 0` 时抛 `ApiError`；**页面里不要自己拆 `Result`、也不要自己判断 `code`**
+- **类型对齐**：后端 DTO 在 `src/types/` 下有对应 TS 类型，字段名与后端一致；`Result<T>` / `PageResult<T>` 的结构必须与 `hify-shared` 的 `web.Result` / `web.PageResult` 对齐（**`code = 0` 才是成功**，错误码前三位等于 HTTP 状态；200 也接受，兼容 HTTP 风格返回体）
+- **接口调用只走 `utils/request.ts` 的 `get` / `post` / `put` / `del`** —— baseURL 是 `/api`，实际路径要带 `/v1` 前缀（`${API_PREFIX}/xxx`）。响应拦截器已经**自动解包出 `data`**、并在失败时 `ElMessage.error` + reject，**调用方不要重复解包、也不要再弹一次 toast**
 - **SSE 只走 `api/sse.ts` 的 `streamSse`** —— 不要在别处再写一份 `fetch` 解析帧的代码；`onError` 要区分「用户主动 abort」和「真的出错」，前者不算错误
 - **类型导入必须 `import type`** —— `verbatimModuleSyntax` 开着，写成普通 import 会在只导入类型的文件里留下运行时依赖
 - **模板里不能写 `import.meta`** —— Vue 模板不编译 ESM 表达式，需要的常量要在 `<script setup>` 里取出来再用（`const isDev = import.meta.env.DEV`）

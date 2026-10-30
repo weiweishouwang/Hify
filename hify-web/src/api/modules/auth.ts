@@ -1,11 +1,11 @@
-import { request } from '../client'
+import { API_PREFIX, get, post } from '@/utils/request'
 
 /**
  * 登录 / 当前用户。
  *
  * 认证方案还没定（共享密码 / OIDC / LDAP，见 CLAUDE.md §五）。
  * 这里按「用户名 + 密码换令牌」实现；若最终选 OIDC，只需把登录页换成跳转，
- * 令牌的存取方式（api/token.ts）与路由守卫都不用动。
+ * 令牌的存取方式（utils/token.ts）与路由守卫都不用动。
  */
 
 export interface LoginPayload {
@@ -25,10 +25,10 @@ export interface LoginResult extends CurrentUserInfo {
 
 /** POST /api/v1/auth/login */
 export function login(payload: LoginPayload): Promise<LoginResult> {
-  return request<LoginResult>({ method: 'POST', url: '/auth/login', data: payload })
+  return post<LoginResult>(`${API_PREFIX}/auth/login`, payload)
 }
 
 /** GET /api/v1/users/me */
 export function getCurrentUser(): Promise<CurrentUserInfo> {
-  return request<CurrentUserInfo>({ method: 'GET', url: '/users/me' })
+  return get<CurrentUserInfo>(`${API_PREFIX}/users/me`)
 }
