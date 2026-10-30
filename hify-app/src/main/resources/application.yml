@@ -51,7 +51,9 @@ spring:
     timeout-per-shutdown-phase: 60s
 
   jackson:
-    date-format: yyyy-MM-dd HH:mm:ss
+    # 时间格式由 shared 的 JacksonConfig 统一成 ISO 8601
+    # （LocalDateTime → 2026-10-30T15:52:42，LocalDate → 2026-10-30），
+    # 这里不要再配 date-format：那个只管 java.util.Date，配了会跟 ISO 格式分叉。
     time-zone: UTC
     default-property-inclusion: non_null
 

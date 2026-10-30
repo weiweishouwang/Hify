@@ -147,6 +147,12 @@
       <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
 
+    <!-- Spring Cache：@EnableCaching 的基础设施（spring-context-support 等） -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-cache</artifactId>
+    </dependency>
+
     <!-- JdbcTemplate：PG 向量库侧手写 SQL（pgvector 的 <=> 运算符与 HNSW 查询，MP 生成不了） -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

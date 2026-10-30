@@ -123,17 +123,19 @@ com.hify.<module>/
 | `web` | `Result`、`PageResult`、`GlobalExceptionHandler`、`PageQuery`（单页上限：普通 100 / 管理台 200） |
 | `context` | `CurrentUser`（record，userId 是 Long）、`AuthType`、`CurrentUserHolder`、`TraceContext` |
 | `id` | `IdGenerator`（ULID 26 字符 Crockford Base32，同毫秒递增保证单调） |
-| `json` | `JsonUtils`（包装容器自动配置的 ObjectMapper） |
-| `mybatis` | `BaseEntity`（业务实体基类：主键 + 审计字段 + 逻辑删除）、`AuditMetaObjectHandler` |
+| `json` | `JsonUtils`（包装容器自动配置的 ObjectMapper）、`TimeSerializers`（时间的 JSON 格式约定） |
+| `mybatis` | `BaseEntity`（业务实体基类：主键 + 审计字段 + 逻辑删除）、`AuditMetaObjectHandler`、`PageHelper`（分页参数与结果转换） |
 | `redis` | `DistributedLock`、`IdempotentGuard`、`RateLimiter` |
 | `concurrent` | `NamedThreadFactory`（线程名带业务前缀，未捕获异常会记录而不是静默消失） |
-| `config` | `ThreadPoolConfig`——`llmExecutor`（LLM/MCP 慢调用）与 `asyncExecutor`（日志异步写入等非关键任务） |
+| `config` | `ThreadPoolConfig`（`llmExecutor` / `asyncExecutor`）、`JacksonConfig`（时间统一 ISO 8601）、`CacheConfig`（Redis 缓存）、`MybatisPlusConfig`（分页拦截器） |
 
 三个容易踩的约定：
 - **业务实体继承 `shared.mybatis.BaseEntity`**——它带 `id`（自增主键）、`createdAt` / `updatedAt` / `createdBy`（自动填充）、`deleted`（`@TableLogic`，0/1）。**事件流表不继承它**：分区表主键必须是 `(id, created_at)`，且 `@TableLogic` 会给每条 SQL 追加 `deleted = 0`，破坏分区裁剪
 - **`deleted` 用 0/1 标记而不是 `deleted_at` 时间戳**——后者在 `@TableLogic` 下与分区裁剪冲突，且多一张表就多一处要维护的软删语义
 - **新增任何 `isXxx()` 方法前先想 Jackson**——它会被当作布尔属性序列化进响应体（`Result.isOk()` 与 `CurrentUser.isApiKey()` 都踩过）
 - **`JsonUtils` 不要自己 `new ObjectMapper`**——第二个 mapper 会与容器里那个行为分叉（如漏注册 `JavaTimeModule`）
+- **时间对外一律 ISO 8601**（`LocalDateTime` → `2026-10-30T15:52:42`，`LocalDate` → `2026-10-30`），由 `shared.config.JacksonConfig` 统一配好；`application.yml` 里**不要再配 `spring.jackson.date-format`**——那个只管 `java.util.Date`，配了会跟 ISO 格式分叉
+- **缓存统一在 Redis，不用本地 Caffeine**（多副本会不一致）。TTL 在 `shared.config.CacheConfig` 里定死：默认 30 分钟，`session-cache` 2 小时，key 前缀 `hify:`
 - **线程池按用途分开，且都注册在 `shared.config`（不是 `internal.config`）**——`internal` 包禁止跨模块 import，而线程池要被 `ai`/`tool`/`mcp` 等模块注入。**注册了 `Executor` 类型的 bean 后，Spring Boot 的 `applicationTaskExecutor` 就不再创建**（`@ConditionalOnMissingBean(Executor.class)`），所以用 `@Async` 必须显式指定执行器名
 
 ### 2.3 部署拓扑
