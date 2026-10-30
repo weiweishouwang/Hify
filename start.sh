@@ -8,8 +8,9 @@
 #   4. 启动前端开发服务器（前台，Ctrl-C 退出时后端一并停掉）
 #
 # 用法：
-#   ./start.sh                # 完整启动
+#   ./start.sh                # 完整启动（前端在前台，Ctrl-C 一起停）
 #   ./start.sh --skip-build   # 跳过后端构建（只改了前端代码时用）
+#   ./start.sh --background   # 全栈放后台，脚本立刻返回（配合 stop.sh）
 #
 # 环境约定：
 #   端口与凭据沿用 docker-compose.yml 那套 HIFY_* 变量名。
@@ -26,8 +27,9 @@ SKIP_BUILD=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
+    --background) BACKGROUND=1 ;;
     -h|--help)
-      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) printf '未知参数：%s（用 --help 看用法）\n' "$arg" >&2; exit 2 ;;
@@ -74,14 +76,35 @@ HEALTH_TIMEOUT="${HIFY_HEALTH_TIMEOUT:-90}"
 LOG_DIR="${ROOT_DIR}/logs"
 API_LOG="${LOG_DIR}/api.log"
 API_PID_FILE="${LOG_DIR}/api.pid"
+WEB_LOG="${LOG_DIR}/web.log"
+WEB_PID_FILE="${LOG_DIR}/web.pid"
 mkdir -p "${LOG_DIR}"
 
 API_PID=""
+WEB_PID=""
+BACKGROUND="${BACKGROUND:-0}"
 
-# ── 退出清理：把本次启动的后端一起收掉 ───────────────────────────────
+# ── 退出清理 ──────────────────────────────────────────────────────────
+# 后台模式（--background）成功时进程要继续活着，由 stop.sh 负责停；
+# 其余情况（前台模式、中途失败）都把本次启动的进程收掉，别留一堆孤儿。
 cleanup() {
-  local code=$?
-  # 只停本脚本自己 fork 出来的后端子进程（API_PID）
+  local code="${1:-0}"
+
+  if [ "${code}" -eq 0 ] && [ "${BACKGROUND}" -eq 1 ]; then
+    # 后台模式正常收工：进程留着，pid 文件留给 stop.sh
+    exit 0
+  fi
+
+  if [ -n "${WEB_PID}" ] && ps -p "${WEB_PID}" >/dev/null 2>&1; then
+    printf '\n'
+    log_info "停止前端进程（pid ${WEB_PID}）"
+    kill "${WEB_PID}" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      ps -p "${WEB_PID}" >/dev/null 2>&1 || break
+      sleep 1
+    done
+    kill -9 "${WEB_PID}" 2>/dev/null || true
+  fi
   if [ -n "${API_PID}" ] && ps -p "${API_PID}" >/dev/null 2>&1; then
     printf '\n'
     log_info "停止后端进程（pid ${API_PID}）"
@@ -93,10 +116,12 @@ cleanup() {
     done
     kill -9 "${API_PID}" 2>/dev/null || true
   fi
-  rm -f "${API_PID_FILE}"
+  rm -f "${API_PID_FILE}" "${WEB_PID_FILE}"
   exit "${code}"
 }
-trap cleanup EXIT INT TERM
+trap 'cleanup $?' EXIT
+trap 'cleanup 130' INT
+trap 'cleanup 143' TERM
 
 # ── 工具函数 ──────────────────────────────────────────────────────────
 
@@ -115,11 +140,16 @@ tcp_probe() {
   return 2
 }
 
-# 端口是否已被占用
+# 端口是否已被占用。
+#
+# IPv4 与 IPv6 都要试：vite 默认绑 localhost，macOS 上解析成 ::1，
+# 只探 127.0.0.1 会漏掉一个明明在监听的端口。
 port_in_use() {
   local port="$1"
   if command -v nc >/dev/null 2>&1; then
     nc -z -w 1 127.0.0.1 "${port}" >/dev/null 2>&1 && return 0
+    nc -z -w 1 ::1 "${port}" >/dev/null 2>&1 && return 0
+    nc -z -w 1 localhost "${port}" >/dev/null 2>&1 && return 0
     return 1
   fi
   if command -v lsof >/dev/null 2>&1; then
@@ -135,6 +165,19 @@ port_owner() {
   if command -v lsof >/dev/null 2>&1; then
     lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1" (pid "$2")"}' | head -1
   fi
+}
+
+# 等端口被监听起来（超时返回 1）
+wait_port() {
+  local port="$1" timeout="$2"
+  local deadline=$((SECONDS + timeout))
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if port_in_use "${port}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 check_mysql() {
@@ -297,17 +340,43 @@ step_start_frontend() {
   export VITE_API_PROXY_TARGET="http://localhost:${API_PORT}"
   log_info "前端 /api 代理目标：${VITE_API_PROXY_TARGET}"
 
+  if [ "${BACKGROUND}" -eq 1 ]; then
+    # 后台模式：前端也放后台，记 pid 供 stop.sh 用
+    nohup npm run dev -- --port "${WEB_PORT}" --strictPort > "${WEB_LOG}" 2>&1 &
+    WEB_PID=$!
+    echo "${WEB_PID}" > "${WEB_PID_FILE}"
+    log_info "前端进程已启动（pid ${WEB_PID}），日志 ${WEB_LOG#"${ROOT_DIR}"/}"
+    wait_port "${WEB_PORT}" 30 || fail "前端开发服务器没在预期时间内监听 ${WEB_PORT} 端口"
+    log_ok "前端就绪：http://localhost:${WEB_PORT}"
+  fi
+
   printf '\n'
   log_ok "────────────────────────────────────────────"
   log_ok "  前端开发服务器：http://localhost:${WEB_PORT}"
   log_ok "  后端接口：      http://localhost:${API_PORT}"
   log_ok "  后端日志：      ${API_LOG#"${ROOT_DIR}"/}"
-  log_ok "  按 Ctrl-C 停止（后端会一起停）"
+  if [ "${BACKGROUND}" -eq 1 ]; then
+    log_ok "  前端日志：      ${WEB_LOG#"${ROOT_DIR}"/}"
+    log_ok "  停止全部：      ./stop.sh"
+  else
+    log_ok "  按 Ctrl-C 停止（后端会一起停）"
+  fi
   log_ok "────────────────────────────────────────────"
   printf '\n'
 
-  # 前台运行：vite 接管终端，Ctrl-C 时由 trap 收掉后端
-  npm run dev -- --port "${WEB_PORT}" --strictPort || fail "前端开发服务器启动失败"
+  if [ "${BACKGROUND}" -eq 0 ]; then
+    # 前台运行：vite 的输出仍然打在终端上，用 wait 等它结束。
+    # 放后台再 wait 是为了拿到它的 pid 写进 pid 文件——stop.sh 要用。
+    npm run dev -- --port "${WEB_PORT}" --strictPort &
+    WEB_PID=$!
+    echo "${WEB_PID}" > "${WEB_PID_FILE}"
+    local rc=0
+    wait "${WEB_PID}" || rc=$?
+    # 130/143 是被 Ctrl-C / TERM 打断，属于正常退出
+    if [ "${rc}" -ne 0 ] && [ "${rc}" -ne 130 ] && [ "${rc}" -ne 143 ]; then
+      fail "前端开发服务器退出（code ${rc}）"
+    fi
+  fi
 }
 
 # ── 主流程 ───────────────────────────────────────────────────────────

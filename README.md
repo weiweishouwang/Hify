@@ -17,6 +17,17 @@ docker compose up -d mysql postgres redis
 
 浏览器打开 <http://localhost:5173>，后端在 <http://localhost:8080>。
 
+也可以用 Makefile：
+
+```bash
+make start     # 后台起全栈
+make stop      # 优雅停掉
+make restart   # 重启
+make build     # 构建后端（含测试）+ 前端
+make package   # 打成 dist/hify-<版本>.tar.gz
+make           # 看全部命令
+```
+
 只改了前端代码时可以跳过构建：`./start.sh --skip-build`。
 
 想直接跑容器化的全栈（前端用 nginx 托管静态产物）：

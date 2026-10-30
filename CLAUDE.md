@@ -277,13 +277,33 @@ docker compose down -v           # 停并清空数据
 ```bash
 ./start.sh                # 检查 MySQL/Redis → 构建并后台起后端 → 等健康检查 → 起前端 dev server
 ./start.sh --skip-build   # 只改了前端代码时跳过后端构建
+./start.sh --background   # 全栈放后台，脚本立刻返回（配合 stop.sh）
 ```
 
 - 端口与凭据跟 `docker-compose.yml` 共用同一套 `HIFY_*` 变量名，根目录有 `.env` 就加载它（没有就用 `application.yml` 的默认值）
 - 后端跑在 `HIFY_LOCAL_API_PORT`（默认 8080），前端 dev server 在 `HIFY_WEB_DEV_PORT`（默认 5173）
 - **脚本会把 `VITE_API_PROXY_TARGET` 指向本次启动的后端** —— 否则改了后端端口，前端 `/api` 还在打 8080
-- 后端日志 `logs/api.log`；Ctrl-C 时脚本把后端一起停掉
+- 后端日志 `logs/api.log`、前端日志 `logs/web.log`；Ctrl-C 时脚本把后端一起停掉
 - **脚本不结束任何不是自己启动的进程**：端口被占用时直接报错并提示怎么腾端口，误杀别人的服务比启动失败更糟
+- **端口探测要试 IPv4 与 IPv6**：vite 默认绑 `localhost`，macOS 上解析成 `::1`，只探 `127.0.0.1` 会漏掉一个明明在监听的端口
+
+**Makefile**（根目录，`make` 不带参数看帮助）：
+
+| target | 作用 |
+|---|---|
+| `make start` | 后台起全栈（等价 `./start.sh --background`） |
+| `make stop` | 优雅停掉后端与前端 |
+| `make restart` | 停掉再重新起 |
+| `make build` | `mvn verify`（含全部测试与依赖环检查）+ 前端 `vue-tsc` 类型检查与打包 |
+| `make build-fast` | 跳过后端测试的快速构建 |
+| `make test` | 后端 + 前端全部测试 |
+| `make clean` | 清理构建产物（不动日志与依赖） |
+| `make distclean` | 连日志与前端依赖一起删 |
+| `make package` | 打成 `dist/hify-<版本>.tar.gz`：jar + 前端静态产物 + nginx.conf + compose 文件 + 启停脚本 |
+| `make status` | 看后端/前端跑着没有 |
+| `make logs` | 跟踪两个日志 |
+
+**`stop.sh` 的停止逻辑**：按 `logs/api.pid` / `logs/web.pid` 找进程 → 先 `SIGTERM`（**连子进程一起**，vite 是 npm 的子进程，只杀 npm 会留下 vite 孤儿）→ 等 `HIFY_STOP_GRACE_SECONDS`（默认 10s）→ 超时才 `SIGKILL`。动手前**先核对命令行是不是本项目的进程**——pid 会被系统回收后复用给别人，不核对就 kill 会误伤无关服务。
 
 - 浏览器入口 `http://localhost:8083`（web 的 nginx，反代 `/api` → api，**同源免 CORS**）；api 直连 `http://localhost:8082`
 - 宿主端口：MySQL 3308 / PG 5433 / Redis 6380 / api 8082 / web 8083（标准端口被本机既有容器栈占用；容器内部仍用标准端口，api 通过服务名互通）

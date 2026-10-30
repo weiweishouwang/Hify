@@ -28,3 +28,6 @@ application-local.yml
 
 # 本地开发脚本产生的日志与 pid
 logs/
+
+# make package 打出来的分发包
+dist/
