@@ -111,9 +111,9 @@ async function fetchProviders(params: { page: number; size: number }): Promise<{
 const columns: HifyTableColumn<Provider>[] = [
   { label: '名称', prop: 'name', minWidth: 160 },
   { label: '类型', prop: 'type', width: 110 },
-  { label: 'Base URL', slot: 'baseUrl', minWidth: 260 },
+  { label: 'Base URL', slot: 'baseUrl', minWidth: 260, hideOnNarrow: true },
   { label: '状态', slot: 'status', width: 100 },
-  { label: '创建时间', prop: 'createdAt', width: 160 },
+  { label: '创建时间', prop: 'createdAt', width: 160, hideOnNarrow: true },
   { label: '操作', slot: 'actions', width: 150, fixed: 'right' },
 ]
 
@@ -193,11 +193,13 @@ function formatNow(): string {
 
 function openCreate(): void {
   editingId.value = null
+  showApiKey.value = false
   dialogRef.value?.open({ ...formDefaults })
 }
 
 function openEdit(row: Provider): void {
   editingId.value = row.id
+  showApiKey.value = false
   dialogRef.value?.open({
     name: row.name,
     type: row.type,
@@ -219,6 +221,9 @@ async function handleSubmit(form: ProviderForm): Promise<void> {
 
 /** 待删除的 id：确认框里要用。 */
 const pendingDeleteId = ref<number | null>(null)
+
+/** API Key 是否明文显示。默认藏起来。 */
+const showApiKey = ref(false)
 
 const confirmDelete = useConfirm(
   '确定删除这个模型提供商吗？删除后用它的 Agent 会调用失败。',
@@ -261,8 +266,8 @@ async function handleDelete(row: Provider): Promise<void> {
         </template>
 
         <template #actions="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button link type="primary" class="action-btn" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="danger" class="action-btn" @click="handleDelete(row)">删除</el-button>
         </template>
       </HifyTable>
     </div>
@@ -272,6 +277,9 @@ async function handleDelete(row: Provider): Promise<void> {
       v-model="dialogVisible"
       v-model:loading="saving"
       :title="dialogTitle"
+      width="520px"
+      label-width="100px"
+      label-position="right"
       :rules="rules"
       :initial-values="formDefaults"
       @submit="handleSubmit"
@@ -290,10 +298,15 @@ async function handleDelete(row: Provider): Promise<void> {
         <el-form-item label="API Key" prop="apiKey">
           <el-input
             v-model="form.apiKey"
-            type="password"
-            show-password
+            :type="showApiKey ? 'text' : 'password'"
             placeholder="上游服务的访问密钥"
-          />
+          >
+            <template #suffix>
+              <button type="button" class="field-toggle" @click="showApiKey = !showApiKey">
+                {{ showApiKey ? '隐藏' : '显示' }}
+              </button>
+            </template>
+          </el-input>
         </el-form-item>
 
         <el-form-item label="Base URL" prop="baseUrl">
@@ -303,3 +316,27 @@ async function handleDelete(row: Provider): Promise<void> {
     </HifyFormDialog>
   </div>
 </template>
+
+<style scoped>
+/* 操作列的两个按钮：Element 相邻按钮默认只留 12px，这里再加 8px */
+.action-btn + .action-btn {
+  margin-left: 20px;
+}
+
+/* API Key 的显示 / 隐藏切换 */
+.field-toggle {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: var(--hify-font-size-xs);
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--hify-transition-color);
+}
+
+.field-toggle:hover {
+  color: var(--color-primary-600);
+}
+</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowDown,
@@ -10,14 +10,33 @@ import {
   SwitchButton,
   User,
 } from '@element-plus/icons-vue'
+import { NARROW_MEDIA, useMediaQuery } from '@/composables/useMediaQuery'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
 const user = useUserStore()
 
-/** 侧边栏折叠状态。折叠后只留图标，菜单文字与版本号都收起来。 */
-const collapsed = ref(false)
+/** 窄屏（< 1200px）：侧边栏自动折叠成只显示图标。 */
+const isNarrow = useMediaQuery(NARROW_MEDIA)
+
+/**
+ * 用户手动折叠的状态。
+ *
+ * `null` 表示「跟随屏幕宽度」：窄屏自动折叠、宽屏自动展开。
+ * 用户手动点过折叠开关之后就不再跟随；宽度跨过断点时重置回跟随。
+ */
+const manualCollapsed = ref<boolean | null>(null)
+
+const collapsed = computed(() => manualCollapsed.value ?? isNarrow.value)
+
+watch(isNarrow, () => {
+  manualCollapsed.value = null
+})
+
+function toggleCollapsed(): void {
+  manualCollapsed.value = !collapsed.value
+}
 
 /**
  * 侧边栏菜单：三项，与 router/index.ts 里的三条业务路由一一对应。
@@ -94,7 +113,7 @@ function onCommand(command: string): void {
           type="button"
           class="app__collapse"
           :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-          @click="collapsed = !collapsed"
+          @click="toggleCollapsed"
         >
           <el-icon><component :is="collapsed ? Expand : Fold" /></el-icon>
           <span v-if="!collapsed">收起</span>

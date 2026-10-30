@@ -17,12 +17,15 @@ const props = withDefaults(
     initialValues?: Partial<Form>
     /** 表单标签宽度。 */
     labelWidth?: string | number
+    /** 标签对齐方式。默认右对齐。 */
+    labelPosition?: 'left' | 'right' | 'top'
     /** 提交按钮文字。 */
     submitText?: string
   }>(),
   {
     width: '560px',
     labelWidth: '96px',
+    labelPosition: 'right',
     submitText: '确定',
   },
 )
@@ -99,6 +102,7 @@ defineExpose({ open, isEdit, formData, mode })
       :model="formData"
       :rules="rules"
       :label-width="labelWidth"
+      :label-position="labelPosition"
       @submit.prevent="handleSubmit"
     >
       <!-- 表单字段由父组件在默认插槽里给 -->

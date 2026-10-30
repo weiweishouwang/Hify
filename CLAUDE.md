@@ -245,7 +245,7 @@ hify-web/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
     ├── views/         页面：provider/（模型提供商，列表用 HifyTable + HifyFormDialog）、agent / chat / knowledge / workflow / log（占位页）
     ├── components/    通用组件：HifyTable（列表表格）、HifyFormDialog（表单弹窗）、PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
-    ├── composables/  通用逻辑：useRequest（请求三态）、useConfirm（删除确认）
+    ├── composables/  通用逻辑：useRequest（请求三态）、useConfirm（删除确认）、useMediaQuery（媒体查询）
     ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
     ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
     ├── router/        路由表 + 登录守卫
@@ -260,7 +260,9 @@ hify-web/
 - **侧边栏可折叠**：`collapsed` 状态在 `App.vue` 里，折叠后只留图标（`el-menu` 的 `collapse` 属性 + `el-aside` 的宽度），底部是折叠开关与版本号。**版本号由 vite 的 `define` 从 `package.json` 注入**（`__APP_VERSION__`），不写死在前端代码里
 - **顶栏左边是面包屑**（`route.matched` 里带 `title` 的各级 + 一个「首页」），右边是头像与用户名
 - **页面统一用 `components/PageHeader.vue` 写标题区**：标题 + 描述 + 右侧操作区（`#actions` 插槽）。**页面自己不要再写一份标题**，位置与间距由组件统一
-- **页面根节点用 `.page`**（浅灰画布 + 24px 页边距），内容块用 `.page-card`（白底 + 轻阴影 + 圆角 + 20px 内边距）
+- **页面根节点用 `.page`**（浅灰画布 + 16px 页边距），内容块用 `.page-card`（白底 + 轻阴影 + 圆角 + 20px 内边距）
+- **窄屏（< 1200px）侧边栏自动折叠成只显示图标** —— 断点定义在 `composables/useMediaQuery.ts` 的 `NARROW_MEDIA`。用户手动点过折叠开关之后不再跟随屏幕，宽度跨过断点时重置回跟随
+- **表格的次要列标 `hideOnNarrow: true`** —— 窄屏下自动隐藏，只留关键信息（哪些算次要由页面自己定，表格只负责执行）
 
 **通用组件与 composable**（新页面一律用这几个，不要再各写一遍）
 

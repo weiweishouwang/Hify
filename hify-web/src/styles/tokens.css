@@ -242,7 +242,7 @@
   --hify-sidebar-width: 224px;
   --hify-sidebar-width-collapsed: 64px;
   --hify-header-height: 56px;
-  --hify-page-padding: var(--hify-space-6);
+  --hify-page-padding: var(--hify-space-4);
   --hify-card-padding: var(--hify-space-5);
   --hify-element-gap: var(--hify-space-4);
 

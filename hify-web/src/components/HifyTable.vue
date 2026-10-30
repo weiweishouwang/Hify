@@ -26,6 +26,8 @@ export interface HifyTableColumn<Row> {
   formatter?: (row: Row, value: unknown) => string
   /** 自定义插槽名；同名插槽由父组件提供。 */
   slot?: string
+  /** 窄屏（< 1200px）下隐藏这一列 —— 次要列在窄屏上不占地方。 */
+  hideOnNarrow?: boolean
 }
 
 /** 表格对外的接口方法签名。 */
@@ -37,6 +39,7 @@ export type HifyTableApi<Row> = (params: PageQuery) => Promise<{
 
 <script setup lang="ts" generic="Row extends object">
 import { computed, onMounted, ref } from 'vue'
+import { NARROW_MEDIA, useMediaQuery } from '@/composables/useMediaQuery'
 
 const props = withDefaults(
   defineProps<{
@@ -80,6 +83,18 @@ function toFormatter(column: HifyTableColumn<Row>) {
 const columnDefs = computed(() =>
   props.columns.map((column) => ({ column, formatter: toFormatter(column) })),
 )
+
+/** 窄屏（< 1200px）：把标了 hideOnNarrow 的次要列去掉，只留关键信息。 */
+const isNarrow = useMediaQuery(NARROW_MEDIA)
+
+const visibleColumnDefs = computed(() =>
+  isNarrow.value
+    ? columnDefs.value.filter((def) => !def.column.hideOnNarrow)
+    : columnDefs.value,
+)
+
+/** 行高。比 Element 默认高一点，表格不显拥挤。 */
+const rowStyle = { height: '52px' }
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -132,11 +147,12 @@ defineExpose({ refresh, rows, total, loading, page, size })
       v-loading="loading"
       :data="rows"
       :row-key="rowKey"
+      :row-style="rowStyle"
       stripe
       class="hify-table__table"
     >
       <el-table-column
-        v-for="def in columnDefs"
+        v-for="def in visibleColumnDefs"
         :key="def.column.label"
         :label="def.column.label"
         :prop="def.column.prop"
