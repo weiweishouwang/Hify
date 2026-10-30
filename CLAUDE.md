@@ -216,7 +216,7 @@ hify-web/
 ├── index.html         Vite 入口
 ├── env.d.ts           Vite 环境变量类型
 └── src/
-    ├── api/           SSE 客户端（sse.ts）+ modules/（按后端模块分文件）
+    ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
     ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
     ├── components/    业务组件：消息气泡、工具调用中间态、占位面板
     ├── layouts/       AppLayout（侧边栏 + 顶栏）

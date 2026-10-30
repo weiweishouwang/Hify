@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { clearToken, getToken, setToken } from '@/utils/token'
-import type { CurrentUserInfo } from '@/api/modules/auth'
+import type { CurrentUserInfo } from '@/api/auth'
 
 /**
  * 当前用户。

@@ -25,7 +25,7 @@ VITE_API_PROXY_TARGET=http://localhost:8082 npm run dev
 
 ```
 src/
-├── api/           SSE 客户端（sse.ts）+ modules/（按后端模块分文件）
+├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
 ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
 ├── components/    业务组件
 ├── layouts/       AppLayout

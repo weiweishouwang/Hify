@@ -1,6 +1,6 @@
 import { API_BASE_URL, API_PREFIX } from '@/utils/request'
 import { getToken } from '@/utils/token'
-import { isDone, streamSse, type SseEvent } from '../sse'
+import { isDone, streamSse, type SseEvent } from './sse'
 import type { ToolCall } from '@/types/chat'
 
 /**

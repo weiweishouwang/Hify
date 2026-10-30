@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { streamChat } from '@/api/modules/chat'
+import { streamChat } from '@/api/chat'
 import { useConnectionStore } from '@/stores/connection'
 import { useConversationStore } from '@/stores/conversation'
 import { newLocalId } from '@/utils/id'

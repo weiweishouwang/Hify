@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { login } from '@/api/modules/auth'
+import { login } from '@/api/auth'
 import { ApiError } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { newLocalId } from '@/utils/id'
