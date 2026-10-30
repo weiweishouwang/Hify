@@ -120,7 +120,7 @@ com.hify.<module>/
 
 #### `hify-shared` 已落地的共享基础设施
 
-按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 159 个单元测试全绿。**
+按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 176 个单元测试全绿。**
 
 | 包 | 内容 |
 |---|---|
@@ -133,6 +133,7 @@ com.hify.<module>/
 | `redis` | `DistributedLock`、`IdempotentGuard`、`RateLimiter` |
 | `concurrent` | `NamedThreadFactory`（线程名带业务前缀，未捕获异常会记录而不是静默消失） |
 | `http` | `LlmHttpClient`（调上游 LLM：普通请求走 RestTemplate，流式 SSE 走 OkHttp）、`LlmApiException` / `LlmErrorKind`（失败分类：TIMEOUT / AUTH_FAILED / RATE_LIMITED / UPSTREAM_ERROR）、`LlmStreamCallback` |
+| `resilience` | `CircuitBreakerService`（按 provider 独立的熔断器）、`CircuitBreakerProperties`（熔断参数）、`LlmRetryPolicy`（重试规则） |
 | `config` | `ThreadPoolConfig`（`llmExecutor` / `asyncExecutor`）、`JacksonConfig`（时间统一 ISO 8601）、`CacheConfig`（Redis 缓存）、`MybatisPlusConfig`（分页拦截器）、`LlmHttpClientConfig`（客户端装配） |
 
 几个容易踩的约定：
@@ -339,7 +340,7 @@ docker compose down -v           # 停并清空数据
 - web 镜像是两段式构建（node 阶段 `npm run build` → nginx 阶段只放 `dist/`），**本地 compose 与生产 K8s 用的是同一个镜像、同一个 `nginx.conf`**
 
 - 父 pom `com.hify:hify-parent` 统一管理全部依赖版本（导入 `spring-boot-dependencies` BOM + 内部模块 + 第三方），**子模块 pom 引用内部模块时不写 `<version>`**
-- **OkHttp 的版本在父 pom 的 `dependencyManagement` 里定** —— Spring Boot 的 BOM 不管 OkHttp（`spring-boot-dependencies` 里没有 `okhttp-bom`），不自己定版本就会随依赖树漂
+- **OkHttp 与 Resilience4j 的版本在父 pom 的 `dependencyManagement` 里定** —— Spring Boot 的 BOM 都不管这两个（`spring-boot-dependencies` 里没有 `okhttp-bom`，也没有 `resilience4j-bom`），不自己定版本就会随依赖树漂
 - `hify-app` 是唯一可执行模块（`spring-boot-maven-plugin:repackage`，启动类 `com.hify.app.HifyApplication`）
 - **依赖环检测**：模块级的环由 Maven 在构建 reactor 时直接报错；artifact 级的环由 enforcer 的 `banCircularDependencies` 在 `verify` 阶段覆盖（该规则需显式引入 `org.codehaus.mojo:extra-enforcer-rules`）
 
@@ -458,8 +459,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **失败统一转成 `LlmApiException`，用 `LlmErrorKind` 区分** `TIMEOUT` / `AUTH_FAILED` / `RATE_LIMITED` / `UPSTREAM_ERROR`，不靠 message 文本判断。**上游的错误响应体只进 DEBUG 日志，不进异常 message** —— 上游报错文本可能夹带用户输入，随异常一路回显到终端用户那里
 - **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个 `llmExecutor`
 - **超时**：连接 5s、普通请求读 60s、流式读 120s。**流式的读超时是 socket 空闲超时**（OkHttp 的 `readTimeout`）—— 模型慢但一直在吐字不会触发，流卡住才会。整体时长没设硬上限（`callTimeout` 未设），非流式路径靠 60s 读超时兜底，流式路径靠上游的结束信号与业务侧会话超时兜底
-- **重试**：只重试连接失败/超时/429/5xx/529；**指数退避 + full jitter**（`random(0, cap)`，无抖动会在故障期间惊群）；429 优先用服务端 `retry-after`；**流式只在首个 chunk 之前重试**（已输出内容后重试会把重复内容拼进用户的流）；**永不重试工具执行**（有副作用）
-- **熔断按 provider 独立**，且 `ignoreExceptions` 排除 429/鉴权/参数错误（429 是"你太频繁"不是"我坏了"，算进失败率会误开熔断）
+- **重试规则在 `shared.resilience.LlmRetryPolicy`**：网络超时重试 2 次（固定间隔 1s）；限流退避重试 2 次（2s → 4s）；**认证失败不重试**（换把 key 再试也一样失败，纯白等）；上游 5xx 不重试，交给熔断器判断（连续 5xx 由熔断器把整个 provider 断开，而不是靠重试硬扛）。**流式只在首个 chunk 之前重试**（已输出内容后重试会把重复内容拼进用户的流）；**永不重试工具执行**（有副作用）
+- **熔断按 provider 独立**（`shared.resilience.CircuitBreakerService`，参数在 `application.yml` 的 `hify.resilience.circuit-breaker` 下：窗口 10 次 / 失败率 50% / 开放 30s / 半开 3 次），且 `ignoreExceptions` 排除 429 与鉴权失败（429 是"你太频繁"不是"我坏了"，算进失败率会误开熔断）。**熔断在外、重试在内**：熔断打开时直接快速失败不重试；一次逻辑调用内部重试 3 次仍失败，熔断器只记 1 次失败（失败率算的是逻辑调用，不是 HTTP 尝试）
 - **降级链是模型接入点配置的一部分**，不在 Agent 里（Agent 的提示词是针对某模型调过的）。**已输出内容后不能再降级**；降级必须对用户可见（响应带 provider 标识）
 - **上下文必须有界**：`max-context-tokens: 16384`、`max-output-tokens: 4096`、`spring.codec.max-in-memory-size: 2MB`（约束的是**入站**请求体；出站不用 WebClient 了，没有它 256KB 那个默认限制）。加内存解决不了上下文无界
 - **MCP**：官方 Java SDK 但仅 Tier 2，**第 1 周必须做 spike**（stdio + Streamable HTTP 双传输、`tools/list` 分页、重连语义）。SDK 默认 HTTP 传输是阻塞的 JDK HttpClient —— **MCP 调用同样要提交到 `llmExecutor`**，否则一次慢调用占住 Tomcat 线程。stdio 模式每个 Pod 各 spawn 一个进程、副本间状态不一致 → **MCP server 应独立部署用 HTTP transport**；server 配置仅管理员可见可改

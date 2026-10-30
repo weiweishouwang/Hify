@@ -40,6 +40,12 @@
       版本只能自己定 —— 选 4.12.0（最后一个 4.x 稳定版；5.x 仍是 alpha）。
     -->
     <okhttp.version>4.12.0</okhttp.version>
+    <!--
+      Resilience4j：熔断器。
+      Spring Boot 的 BOM 同样不管它（spring-boot-dependencies 里没有 resilience4j-bom），
+      版本自己钉。选 1.7.1（2.x 是新的大版本，包路径与 API 有变动）。
+    -->
+    <resilience4j.version>1.7.1</resilience4j.version>
   </properties>
 
   <dependencyManagement>
@@ -124,6 +130,11 @@
         <artifactId>okhttp</artifactId>
         <version>${okhttp.version}</version>
       </dependency>
+      <dependency>
+        <groupId>io.github.resilience4j</groupId>
+        <artifactId>resilience4j-circuitbreaker</artifactId>
+        <version>${resilience4j.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -162,6 +173,12 @@
     <dependency>
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>okhttp</artifactId>
+    </dependency>
+
+    <!-- Resilience4j：按 provider 独立的熔断器（shared.resilience.CircuitBreakerService） -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-circuitbreaker</artifactId>
     </dependency>
 
     <dependency>
