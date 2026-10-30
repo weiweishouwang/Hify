@@ -37,6 +37,22 @@ const HTTP_STYLE_SUCCESS_CODE = 200
 /** 普通请求超时。流式请求不走 axios，走 api/sse.ts。 */
 const REQUEST_TIMEOUT_MS = 30_000
 
+/** 网络层失败（连不上后端）时给用户看的话。 */
+const NETWORK_ERROR_MESSAGE = '后端服务暂时不可用，请稍后重试'
+
+/**
+ * 没有统一响应体时的兜底文案。
+ *
+ * axios 的原文是 "Request failed with status code 502" 这种英文，
+ * 直接弹给用户不合适（CLAUDE.md §3.6）。
+ */
+function fallbackMessage(status: number): string {
+  if (status >= 500) {
+    return NETWORK_ERROR_MESSAGE
+  }
+  return status === 404 ? '请求的资源不存在' : '请求失败'
+}
+
 /**
  * 业务错误。
  *
@@ -95,12 +111,13 @@ instance.interceptors.response.use(
       // 后端出错时也会返回统一响应体，能取到就展示后端给的 message
       const body = response.data as Result<unknown> | undefined
       const code = body && typeof body.code === 'number' ? body.code : response.status * 100
-      const message = body?.message || error.message || '请求失败'
+      // 没有统一响应体时（比如代理连不上后端返回的 502）不要把 axios 原文弹给用户
+      const message = body?.message || fallbackMessage(response.status)
       ElMessage.error(message)
       return Promise.reject(new ApiError(code, message, response.status))
     }
     // 没有响应 = 网络层失败（后端没起来、代理断了）
-    ElMessage.error('后端服务暂时不可用，请稍后重试')
+    ElMessage.error(NETWORK_ERROR_MESSAGE)
     return Promise.reject(new ApiError(-1, error.message || '网络请求失败'))
   },
 )

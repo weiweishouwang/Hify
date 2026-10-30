@@ -141,6 +141,37 @@ describe('request 响应拦截器', () => {
     )
   })
 
+  it('没有统一响应体时给的是人话，不是 axios 的英文原文', async () => {
+    await withServer(
+      (_request, response) => {
+        response.writeHead(502, { 'Content-Type': 'text/plain' })
+        response.end('Bad Gateway')
+      },
+      async () => {
+        await expect(get('/v1/boom')).rejects.toMatchObject({
+          message: '后端服务暂时不可用，请稍后重试',
+        })
+        expect(errorSpy).toHaveBeenCalledWith('后端服务暂时不可用，请稍后重试')
+      },
+    )
+  })
+
+  it('404 且没有统一响应体时提示资源不存在', async () => {
+    await withServer(
+      (_request, response) => {
+        response.writeHead(404, { 'Content-Type': 'text/plain' })
+        response.end('Not Found')
+      },
+      async () => {
+        await expect(get('/v1/nope')).rejects.toMatchObject({
+          code: 40400,
+          message: '请求的资源不存在',
+        })
+        expect(errorSpy).toHaveBeenCalledWith('请求的资源不存在')
+      },
+    )
+  })
+
   it('连不上后端时给出人话提示', async () => {
     const server = await startServer(() => undefined)
     const url = server.url
