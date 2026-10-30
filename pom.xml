@@ -98,6 +98,11 @@
         <version>${mybatis-plus.version}</version>
       </dependency>
       <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-jsqlparser</artifactId>
+        <version>${mybatis-plus.version}</version>
+      </dependency>
+      <dependency>
         <groupId>io.modelcontextprotocol.sdk</groupId>
         <artifactId>mcp</artifactId>
         <version>${mcp-sdk.version}</version>
@@ -151,6 +156,13 @@
     <dependency>
       <groupId>com.baomidou</groupId>
       <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+    </dependency>
+
+    <!-- 分页拦截器：MyBatis-Plus 3.5.18 把 PaginationInnerInterceptor 拆到这个模块
+         （它依赖 JSqlParser 来拼分页 SQL 与 count 语句），starter 不再传递引入。 -->
+    <dependency>
+      <groupId>com.baomidou</groupId>
+      <artifactId>mybatis-plus-jsqlparser</artifactId>
     </dependency>
 
     <!-- Redis：缓存、限流计数、分布式锁、幂等键。必须在 Redis，不能用本地缓存（多副本会不一致） -->
