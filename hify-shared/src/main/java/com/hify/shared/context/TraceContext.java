@@ -19,6 +19,9 @@ public final class TraceContext {
     /** MDC 中存放 traceId 的键名，与日志配置里的 pattern 对应。 */
     public static final String MDC_KEY = "traceId";
 
+    /** MDC 中存放 spanId 的键名。有 OpenTelemetry 时才有值。 */
+    public static final String SPAN_ID_KEY = "spanId";
+
     private static final ThreadLocal<String> HOLDER = new ThreadLocal<>();
 
     private TraceContext() {
@@ -37,12 +40,29 @@ public final class TraceContext {
      * @param traceId 链路 ID；传 null 等同于清理
      */
     public static void set(String traceId) {
+        set(traceId, null);
+    }
+
+    /**
+     * 设置 traceId 与 spanId，同时写入 MDC。
+     *
+     * <p>spanId 只在有 OpenTelemetry 时才有值，传 null 表示没有。
+     *
+     * @param traceId 链路 ID；传 null 等同于清理
+     * @param spanId  段 ID，可为 null
+     */
+    public static void set(String traceId, String spanId) {
         if (traceId == null || traceId.isBlank()) {
             clear();
             return;
         }
         HOLDER.set(traceId);
         MDC.put(MDC_KEY, traceId);
+        if (spanId == null || spanId.isBlank()) {
+            MDC.remove(SPAN_ID_KEY);
+        } else {
+            MDC.put(SPAN_ID_KEY, spanId);
+        }
     }
 
     /** 取当前 traceId；未设置时返回 null。 */
@@ -54,5 +74,6 @@ public final class TraceContext {
     public static void clear() {
         HOLDER.remove();
         MDC.remove(MDC_KEY);
+        MDC.remove(SPAN_ID_KEY);
     }
 }

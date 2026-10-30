@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hify 统一日志配置。
+
+  - 开发环境（dev / local / test / 未指定 profile）：控制台彩色输出
+  - 生产环境（prod）：JSON 写文件，按天滚动，保留 30 天
+
+  日志格式：%d{HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{20} - %msg%n
+  traceId 由 RequestLogInterceptor 在请求入口写进 MDC、请求结束清理。
+-->
+<configuration>
+
+    <!-- Spring Boot 自带的默认值：conversionRule 与常用 logger 级别 -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- 控制台格式。%highlight 是 Logback 自带的颜色转换器，按级别上色 -->
+    <property name="HIFY_CONSOLE_PATTERN"
+              value="%d{HH:mm:ss} [%thread] [%X{traceId}] %highlight(%-5level) %logger{20} - %msg%n"/>
+
+    <!-- 日志目录：环境变量 HIFY_LOG_DIR 或系统属性 -D HIFY_LOG_DIR，默认 ./logs -->
+    <property name="HIFY_LOG_DIR" value="${HIFY_LOG_DIR:-logs}"/>
+
+    <!-- 开发环境：控制台彩色输出 -->
+    <springProfile name="dev,local,test,default">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${HIFY_CONSOLE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- 生产环境：JSON 写文件，按天滚动，保留 30 天 -->
+    <springProfile name="prod">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${HIFY_LOG_DIR}/hify.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${HIFY_LOG_DIR}/hify.%d{yyyy-MM-dd}.log</fileNamePattern>
+                <!-- 保留 30 天 -->
+                <maxHistory>30</maxHistory>
+                <!-- 兜底：30 天内的量也不可能撑爆磁盘 -->
+                <totalSizeCap>10GB</totalSizeCap>
+            </rollingPolicy>
+            <!--
+              JSON 输出用 Spring Boot 自带的 StructuredLogEncoder（logstash 格式）：
+              一行一条，MDC 里的 traceId / spanId 会自动作为字段带出去，
+              不必自己写编码器。
+            -->
+            <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+                <format>logstash</format>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+</configuration>

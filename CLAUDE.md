@@ -120,7 +120,7 @@ com.hify.<module>/
 
 #### `hify-shared` 已落地的共享基础设施
 
-按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 176 个单元测试全绿。**
+按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 181 个单元测试全绿。**
 
 | 包 | 内容 |
 |---|---|
@@ -134,6 +134,7 @@ com.hify.<module>/
 | `concurrent` | `NamedThreadFactory`（线程名带业务前缀，未捕获异常会记录而不是静默消失） |
 | `http` | `LlmHttpClient`（调上游 LLM：普通请求走 RestTemplate，流式 SSE 走 OkHttp）、`LlmApiException` / `LlmErrorKind`（失败分类：TIMEOUT / AUTH_FAILED / RATE_LIMITED / UPSTREAM_ERROR）、`LlmStreamCallback` |
 | `resilience` | `CircuitBreakerService`（按 provider 独立的熔断器）、`CircuitBreakerProperties`（熔断参数）、`LlmRetryPolicy`（重试规则） |
+| `log` | `RequestLogInterceptor`（请求日志 + traceId 写进 MDC）；装配在 `shared.internal.config.WebLogConfig` |
 | `config` | `ThreadPoolConfig`（`llmExecutor` / `asyncExecutor`）、`JacksonConfig`（时间统一 ISO 8601）、`CacheConfig`（Redis 缓存）、`MybatisPlusConfig`（分页拦截器）、`LlmHttpClientConfig`（客户端装配） |
 
 几个容易踩的约定：
@@ -183,6 +184,10 @@ MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机
 - `/actuator/health/liveness` —— 只含 `livenessState`。依赖抖动**不触发重启**：重启修不好依赖，还掐断所有 SSE
 - `/actuator/health/readiness` —— 含 `readinessState,db`。MySQL 挂了读不到 Agent 配置，等于在服务必然失败的请求，必须摘流量
 - **Redis 不进 readiness**——它挂了只该降级（限流/锁失效），不该把全部副本踢出负载均衡，那个爆炸半径大得多
+
+**生产环境的 profile 与日志目录：**
+- K8s 里给 api 容器注入 `SPRING_PROFILES_ACTIVE=prod` —— 生产要的是 JSON 写文件，不是控制台彩色输出
+- 日志目录用 `HIFY_LOG_DIR` 指定（默认 `logs`），K8s 里挂到宿主机目录或交给日志采集 sidecar。**开发与生产的 compose/K8s 注入同一套 `HIFY_*` 变量名**，日志目录同理
 
 ### 2.4 数据模型
 
@@ -456,6 +461,10 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **调用方必须把它提交到 `llmExecutor` 线程池** —— 两个方法都阻塞，直接在 Controller 里调就是拿 Tomcat worker 线程去等 LLM，60 秒一次的非流式调用能把 200 个线程全锁死
 - **`llmExecutor` 的 50 个线程就是并发 LLM 调用的天花板** —— 队列（100）满且 50 个线程都在跑时，`CallerRunsPolicy` 会让**提交方线程自己执行**；提交方通常是 Tomcat 线程，于是照样被占住。并发模型按这个数算，不要按「Tomcat 有 200 线程」算
 - **SSE 帧自己解析（`shared.http.SseFrameReader`），不要用 `okhttp-sse`** —— 4.12.0 的同步入口 `EventSources.processResponse` 是坏的（`RealEventSource.call` 是 lateinit 没赋值，一调就抛 `UninitializedPropertyAccessException`）；它剩下的异步入口会把并发卡在 OkHttp `Dispatcher` 的 `maxRequestsPerHost`（默认 5）上 —— 同一个 provider 主机最多挂 5 条 SSE。自己读响应体则全程留在调用方线程上，并发数不受 Dispatcher 限制
+- **日志配置在 `shared/src/main/resources/logback-spring.xml`** —— 开发环境（`dev`/`local`/`test`/未指定 profile）控制台彩色输出，生产环境（`prod` profile）JSON 写文件、按天滚动、保留 30 天，目录用 `HIFY_LOG_DIR` 指定（默认 `logs`）。格式 `%d{HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{20} - %msg%n`
+- **日志里的 traceId 由 `shared.log.RequestLogInterceptor` 管** —— 请求入口写进 MDC、请求结束清理（Tomcat 线程会复用，不清理会把上一个请求的 traceId 带过来）。**traceId 优先用 OpenTelemetry 的**：`Span.current()` 有效就用它的 traceId 与 spanId，没有才自己生成 32 位十六进制
+- **JSON 输出用 Spring Boot 自带的 `StructuredLogEncoder`（logstash 格式）**，别自己写编码器 —— MDC 里的 `traceId` / `spanId` 会自动作为字段带出去，日志与链路追踪能直接对上
+- **`logback-spring.xml` 只在 Spring Boot 启动时生效** —— Logback 本身不认识这个文件名（它只认 `logback.xml` / `logback-test.xml`），所以各模块的单元测试（不起 Spring 上下文）走 Logback 默认配置，不受这个文件影响
 - **失败统一转成 `LlmApiException`，用 `LlmErrorKind` 区分** `TIMEOUT` / `AUTH_FAILED` / `RATE_LIMITED` / `UPSTREAM_ERROR`，不靠 message 文本判断。**上游的错误响应体只进 DEBUG 日志，不进异常 message** —— 上游报错文本可能夹带用户输入，随异常一路回显到终端用户那里
 - **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个 `llmExecutor`
 - **超时**：连接 5s、普通请求读 60s、流式读 120s。**流式的读超时是 socket 空闲超时**（OkHttp 的 `readTimeout`）—— 模型慢但一直在吐字不会触发，流卡住才会。整体时长没设硬上限（`callTimeout` 未设），非流式路径靠 60s 读超时兜底，流式路径靠上游的结束信号与业务侧会话超时兜底
