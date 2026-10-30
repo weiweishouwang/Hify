@@ -233,7 +233,7 @@ step_check_mysql() {
   if check_mysql "${DB_HOST}" "${DB_PORT}" "${DB_USER}" "${DB_PASSWORD}"; then
     log_ok "MySQL 可用（库 ${DB_NAME}，用户 ${DB_USER}）"
   else
-    fail "MySQL 不可用（${DB_HOST}:${DB_PORT}）。先起数据库：docker compose up -d mysql"
+    fail "MySQL 不可用（${DB_HOST}:${DB_PORT}）。先起中间件：make up（或 docker compose up -d mysql）"
   fi
 }
 
@@ -243,7 +243,7 @@ step_check_redis() {
   if check_redis "${REDIS_HOST}" "${REDIS_PORT}" "${REDIS_PASSWORD}"; then
     log_ok "Redis 可用"
   else
-    fail "Redis 不可用（${REDIS_HOST}:${REDIS_PORT}）。先起缓存：docker compose up -d redis"
+    fail "Redis 不可用（${REDIS_HOST}:${REDIS_PORT}）。先起中间件：make up（或 docker compose up -d redis）"
   fi
 }
 

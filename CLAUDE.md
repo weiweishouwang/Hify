@@ -289,18 +289,24 @@ docker compose down -v           # 停并清空数据
 
 **Makefile**（根目录，`make` 不带参数看帮助）：
 
+**中间件与应用的分工是分开的**——中间件归 compose 管（容器化），应用进程归脚本管（本地 java 进程 + vite dev server）。本地跑应用时 compose 里的 api/web 容器不掺进来，避免两个后端抢端口。
+
 | target | 作用 |
 |---|---|
-| `make start` | 后台起全栈（等价 `./start.sh --background`） |
-| `make stop` | 优雅停掉后端与前端 |
-| `make restart` | 停掉再重新起 |
+| `make up` | 起中间件（mysql + postgres + redis），等健康检查过了才返回 |
+| `make down` | 停中间件（容器与数据卷都留着，`make up` 能再起来） |
+| `make purge` | 彻底清理：`docker compose down -v`，**停全部服务并删数据卷，不可恢复** |
+| `make ps` | 看 compose 服务状态 |
+| `make start` | 后台起应用（等价 `./start.sh --background`） |
+| `make stop` | 优雅停掉应用进程 |
+| `make restart` | 停掉应用再重新起 |
 | `make build` | `mvn verify`（含全部测试与依赖环检查）+ 前端 `vue-tsc` 类型检查与打包 |
 | `make build-fast` | 跳过后端测试的快速构建 |
 | `make test` | 后端 + 前端全部测试 |
 | `make clean` | 清理构建产物（不动日志与依赖） |
 | `make distclean` | 连日志与前端依赖一起删 |
 | `make package` | 打成 `dist/hify-<版本>.tar.gz`：jar + 前端静态产物 + nginx.conf + compose 文件 + 启停脚本 |
-| `make status` | 看后端/前端跑着没有 |
+| `make status` | 看应用进程跑着没有 |
 | `make logs` | 跟踪两个日志 |
 
 **`stop.sh` 的停止逻辑**：按 `logs/api.pid` / `logs/web.pid` 找进程 → 先 `SIGTERM`（**连子进程一起**，vite 是 npm 的子进程，只杀 npm 会留下 vite 孤儿）→ 等 `HIFY_STOP_GRACE_SECONDS`（默认 10s）→ 超时才 `SIGKILL`。动手前**先核对命令行是不是本项目的进程**——pid 会被系统回收后复用给别人，不核对就 kill 会误伤无关服务。

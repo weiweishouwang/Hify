@@ -29,7 +29,12 @@ PKG_NAME := hify-$(VERSION)
 # jar 名字带版本号，别写死
 APP_JAR := $(shell ls -1 hify-app/target/hify-app-*.jar 2>/dev/null | grep -v '\.original$$' | head -1)
 
-.PHONY: help start stop restart build build-fast clean package test status logs distclean
+# 中间件服务：make up / down 只管这三个，不碰 api 与 web 容器
+# （本地跑应用时后端是 start.sh 起的，compose 里那两个容器别掺进来）
+MIDDLEWARE := mysql postgres redis
+
+.PHONY: help start stop restart build build-fast clean package test status logs distclean \
+        up down purge ps
 
 ## help: 列出所有可用命令
 help:
@@ -37,18 +42,47 @@ help:
 	@echo ""
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed -e 's/^## /  /'
 	@echo ""
+	@echo "中间件与应用的分工："
+	@echo "  make up / down      中间件（mysql + postgres + redis，走 docker compose）"
+	@echo "  make start / stop   应用进程（后端 + 前端，走 start.sh / stop.sh）"
+	@echo ""
 
-## start: 后台启动全栈（后端 + 前端 dev server）
+## start: 后台启动应用（后端 + 前端 dev server）
 start:
 	@./start.sh --background
 
-## stop: 优雅停止后端与前端
+## stop: 优雅停止应用进程（后端 + 前端）
 stop:
 	@./stop.sh
 
-## restart: 停掉再重新起
+## restart: 停掉应用再重新起
 restart: stop start
 	@echo "重启完成"
+
+## up: 启动中间件（mysql + postgres + redis）
+up:
+	@if docker compose up --help 2>&1 | grep -q -- '--wait'; then \
+	  docker compose up -d --wait --wait-timeout 90 $(MIDDLEWARE); \
+	  echo "==> 中间件已就绪（健康检查都过了）"; \
+	else \
+	  echo "==> 这个 compose 版本不支持 --wait，起完自己用 make ps 确认"; \
+	  docker compose up -d $(MIDDLEWARE); \
+	fi
+
+## down: 停止中间件（保留容器与数据卷）
+down:
+	@docker compose stop $(MIDDLEWARE)
+	@echo "==> 中间件已停（数据卷还在，make up 就能再起来）"
+	@echo "==> 注意：compose 里的 api / web 若在跑，会连不上数据库了"
+
+## purge: 彻底清理中间件（停全部服务 + 删数据卷，不可恢复）
+purge:
+	@echo "==> 这会停掉所有 compose 服务并删除数据卷（MySQL 数据、向量数据都会没）"
+	@docker compose down -v
+
+## ps: 看 compose 服务的状态
+ps:
+	@docker compose ps
 
 ## build: 构建后端（含测试）+ 前端
 build:
