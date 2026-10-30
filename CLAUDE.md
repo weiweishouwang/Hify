@@ -233,6 +233,21 @@ mvn -pl hify-app -am spring-boot:run         # 本地起应用（需先起 MySQL
 mvn -pl hify-knowledge -am test               # 只测某个模块
 ```
 
+**本地开发环境**（Docker Compose，一键起全栈）：
+
+```bash
+docker compose up -d --build     # 起 mysql + pgvector + redis + api + web
+docker compose logs -f api        # 看 api 日志
+docker compose down              # 停（保留数据卷）
+docker compose down -v           # 停并清空数据
+```
+
+- 浏览器入口 `http://localhost:8083`（web 的 nginx，反代 `/api` → api，**同源免 CORS**）；api 直连 `http://localhost:8082`
+- 宿主端口：MySQL 3308 / PG 5433 / Redis 6380 / api 8082 / web 8083（标准端口被本机既有容器栈占用；容器内部仍用标准端口，api 通过服务名互通）
+- **pgvector 扩展由 `docker/pg-init/01-create-vector.sql` 在数据卷首次初始化时创建**
+- Redis 用 `noeviction`——锁与幂等键不能被淘汰
+- 凭据全部可用环境变量覆盖（见 `.env.example`）；api 通过 `HIFY_*` 系列变量连库，与生产 K8s 注入同一套变量名
+
 - 父 pom `com.hify:hify-parent` 统一管理全部依赖版本（导入 `spring-boot-dependencies` BOM + 内部模块 + 第三方），**子模块 pom 引用内部模块时不写 `<version>`**
 - `hify-app` 是唯一可执行模块（`spring-boot-maven-plugin:repackage`，启动类 `com.hify.app.HifyApplication`）
 - **依赖环检测**：模块级的环由 Maven 在构建 reactor 时直接报错；artifact 级的环由 enforcer 的 `banCircularDependencies` 在 `verify` 阶段覆盖（该规则需显式引入 `org.codehaus.mojo:extra-enforcer-rules`）

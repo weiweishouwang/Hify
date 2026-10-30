@@ -1,0 +1,128 @@
+# Hify 本地开发环境
+#
+#   docker compose up -d --build      启动全部
+#   docker compose logs -f api        看 api 日志
+#   docker compose down               停止（保留数据卷）
+#   docker compose down -v            停止并清空数据卷
+#
+# 浏览器入口： http://localhost:8083   （web 的 nginx，同时反代 /api → api:8080）
+# api 直连：   http://localhost:8082
+#
+# 端口说明：本机已经跑着别的容器栈（3307/5432/6379/8080 都被占用），
+# 所以这里把三个存储与两个服务映射到空闲端口。容器内部仍用标准端口，
+# api 通过服务名（mysql/postgres/redis）在容器网络内互通，不受宿主端口影响。
+# 换机器时改 .env 里的 HIFY_*_PORT 即可。
+#
+# 所有账号密码都能用环境变量覆盖（见 .env.example），默认是本地开发用的弱口令，
+# 生产环境不要用这套。
+
+name: hify
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: hify-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${HIFY_DB_ROOT_PASSWORD:-hify-root}
+      MYSQL_DATABASE: ${HIFY_DB_NAME:-hify}
+      MYSQL_USER: ${HIFY_DB_USERNAME:-hify}
+      MYSQL_PASSWORD: ${HIFY_DB_PASSWORD:-hify}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "${HIFY_DB_PORT:-3308}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${HIFY_DB_USERNAME:-hify}", "-p${HIFY_DB_PASSWORD:-hify}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  postgres:
+    # pgvector 官方镜像：PostgreSQL 16 + pgvector 扩展
+    image: pgvector/pgvector:pg16
+    container_name: hify-postgres
+    environment:
+      POSTGRES_DB: ${HIFY_PG_NAME:-hify}
+      POSTGRES_USER: ${HIFY_PG_USERNAME:-hify}
+      POSTGRES_PASSWORD: ${HIFY_PG_PASSWORD:-hify}
+    ports:
+      - "${HIFY_PG_PORT:-5433}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      # 初始化脚本：只在数据卷为空时执行一次，装 pgvector 扩展
+      - ./docker/pg-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${HIFY_PG_USERNAME:-hify} -d ${HIFY_PG_NAME:-hify}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7
+    container_name: hify-redis
+    # noeviction：锁与幂等键不能被淘汰（allkeys-lru 会淘汰掉它们，导致锁失效）
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${HIFY_REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hify-api
+    environment:
+      # 服务名即容器内主机名，与 application.yml 的环境变量名一一对应
+      HIFY_DB_HOST: mysql
+      HIFY_DB_PORT: "3306"
+      HIFY_DB_NAME: ${HIFY_DB_NAME:-hify}
+      HIFY_DB_USERNAME: ${HIFY_DB_USERNAME:-hify}
+      HIFY_DB_PASSWORD: ${HIFY_DB_PASSWORD:-hify}
+      HIFY_PG_HOST: postgres
+      HIFY_PG_PORT: "5432"
+      HIFY_PG_NAME: ${HIFY_PG_NAME:-hify}
+      HIFY_PG_USERNAME: ${HIFY_PG_USERNAME:-hify}
+      HIFY_PG_PASSWORD: ${HIFY_PG_PASSWORD:-hify}
+      HIFY_REDIS_HOST: redis
+      HIFY_REDIS_PORT: "6379"
+    ports:
+      - "${HIFY_API_PORT:-8082}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  web:
+    build:
+      context: ./web
+    container_name: hify-web
+    ports:
+      - "${HIFY_WEB_PORT:-8083}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  pg-data:
+  redis-data:

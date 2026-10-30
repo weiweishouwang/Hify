@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hify</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+           margin: 0; padding: 48px; background: #f7f8fa; color: #1f2329; }
+    .card { max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px;
+            padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { color: #646a73; line-height: 1.7; margin: 8px 0; }
+    code { background: #f2f3f5; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    .ok { color: #1f9d55; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hify</h1>
+    <p class="ok">前端占位页已就绪 —— 真实的 Vue 3 + Element Plus 工程尚未创建。</p>
+    <p>后端已启动，接口经本层 nginx 反代（同源，无需处理 CORS）：</p>
+    <p><code>GET /api/v1/health</code> → <code>{"code":0,"message":"ok","data":"Hify is running"}</code></p>
+    <p>点击 <a href="/api/v1/health">/api/v1/health</a> 验证。</p>
+  </div>
+</body>
+</html>
