@@ -1,0 +1,31 @@
+:root {
+  --hify-bg: #f4f6f9;
+  --hify-surface: #ffffff;
+  --hify-border: #e4e7ed;
+  --hify-text: #1f2329;
+  --hify-text-muted: #646a73;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: var(--hify-text);
+  background: var(--hify-bg);
+}
+
+code {
+  padding: 1px 5px;
+  font-size: 13px;
+  background: #f2f3f5;
+  border-radius: 4px;
+}

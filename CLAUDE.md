@@ -208,22 +208,32 @@ MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机
 
 ### 2.5 前端结构
 
-Vue 3 + TypeScript + Vite + Element Plus + Pinia。
+前端是独立工程 `hify-web/`（**不在 Maven reactor 里**），Vue 3 + TypeScript + Vite + Element Plus + Pinia。
 
 ```
-src/
-├── api/          后端接口封装（Axios 实例 + SSE 客户端）
-├── views/        页面：模型管理 / Agent 配置 / 知识库 / 工作流 / 日志 / 对话
-├── components/   业务组件
-├── stores/       Pinia：会话状态、连接状态、当前用户
-└── router/       路由与守卫
+hify-web/
+├── vite.config.ts     开发代理 /api → localhost:8080 + 打包配置
+├── index.html         Vite 入口
+├── env.d.ts           Vite 环境变量类型
+└── src/
+    ├── api/           接口封装：client.ts（axios 实例）+ sse.ts（fetch + ReadableStream）+ modules/（按后端模块分文件）
+    ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
+    ├── components/    业务组件：消息气泡、工具调用中间态、占位面板
+    ├── layouts/       AppLayout（侧边栏 + 顶栏）
+    ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
+    ├── router/        路由表 + 登录守卫
+    ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
+    ├── utils/         无状态小工具
+    └── styles/        全局样式与 CSS 变量
 ```
 
 - **管理后台**（模型 / Agent / 知识库 / 工作流 / 日志）用 Element Plus 的表格与表单即可，不额外引入 UI 框架
 - **对话页是唯一的自定义界面**：消息气泡 + 流式增量渲染 + 工具调用中间态
-- **SSE 客户端封在 `api/` 下统一提供** —— 原生 `EventSource` 只支持 GET 且不能带 header/body，而对话接口需要 POST + body + token，所以必须用 `fetch` + `ReadableStream` 手动解析 SSE 帧
-- **连接状态归 Pinia 管**：每个对话页一条 SSE 连接，页面卸载必须 `abort()`，否则连接泄漏
+- **SSE 客户端封在 `api/sse.ts` 统一提供** —— 原生 `EventSource` 只支持 GET 且不能带 header/body，而对话接口需要 POST + body + token，所以必须用 `fetch` + `ReadableStream` 手动解析 SSE 帧。**帧解析有单测**（`src/api/__tests__/sse.test.ts`：起真的 http 服务按字节吐帧，覆盖跨 chunk 拆帧、多字节字符跨边界、CRLF 分隔符、心跳注释、`[DONE]`）
+- **连接状态归 Pinia 管**：`stores/connection.ts` 持有唯一的 `AbortController`，重新发送先掐断上一条；**页面卸载必须 `abort()`**，否则连接泄漏
+- **令牌存放在 `api/token.ts`** —— api 层不 import Pinia（否则 api ↔ stores 循环依赖），路由守卫只看「有没有令牌」
 - 静态资源由 nginx 托管并带 hash 长缓存；浏览器侧始终同源（`/api` 与 `/` 都走 Ingress）
+- **认证方案还没定**（见 §五）：登录页按「用户名 + 密码换令牌」实现，将来若选 OIDC 只换登录页，令牌存取与守卫不用动
 
 ### 2.6 构建
 
@@ -232,6 +242,22 @@ mvn clean verify                              # 全量构建 + 依赖图检查
 mvn -pl hify-app -am spring-boot:run         # 本地起应用（需先起 MySQL / PG / Redis）
 mvn -pl hify-knowledge -am test               # 只测某个模块
 ```
+
+**前端**（`hify-web/`，独立于 Maven）：
+
+```bash
+cd hify-web
+npm install          # 首次
+npm run dev          # dev server 5173，/api 代理到 localhost:8080
+npm run build        # vue-tsc 类型检查 + vite build → dist/
+npm test             # vitest
+npm run type-check   # 只做类型检查
+```
+
+- **TypeScript 必须锁在 6.x** —— TS 7 的 `package.json` 加了 `exports` 字段，不再导出 `./lib/tsc`，而 `vue-tsc` 正是靠 `require.resolve('typescript/lib/tsc')` 挂载 Vue 语言插件的；升到 7 会直接报 `ERR_PACKAGE_PATH_NOT_EXPORTED`
+- **Vite 8 底层是 Rolldown**，没有 Rollup 的 `manualChunks` 对象写法，手动分包走 `output.codeSplitting.groups`
+- 开发期 `/api` 走 vite 代理、生产期走 nginx 反代，浏览器侧都是同源，**前端代码里不出现绝对地址**
+- **vite dev 代理不要设 `timeout` / `proxyTimeout`** —— 那是套接字空闲超时，会把 15–30s 一次心跳的 SSE 掐断；超时交给后端自己的四层超时管
 
 **本地开发环境**（Docker Compose，一键起全栈）：
 
@@ -247,6 +273,7 @@ docker compose down -v           # 停并清空数据
 - **pgvector 扩展由 `docker/pg-init/01-create-vector.sql` 在数据卷首次初始化时创建**
 - Redis 用 `noeviction`——锁与幂等键不能被淘汰
 - 凭据全部可用环境变量覆盖（见 `.env.example`）；api 通过 `HIFY_*` 系列变量连库，与生产 K8s 注入同一套变量名
+- web 镜像是两段式构建（node 阶段 `npm run build` → nginx 阶段只放 `dist/`），**本地 compose 与生产 K8s 用的是同一个镜像、同一个 `nginx.conf`**
 
 - 父 pom `com.hify:hify-parent` 统一管理全部依赖版本（导入 `spring-boot-dependencies` BOM + 内部模块 + 第三方），**子模块 pom 引用内部模块时不写 `<version>`**
 - `hify-app` 是唯一可执行模块（`spring-boot-maven-plugin:repackage`，启动类 `com.hify.app.HifyApplication`）
@@ -369,6 +396,18 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **上下文必须有界**：`max-context-tokens: 16384`、`max-output-tokens: 4096`、`spring.codec.max-in-memory-size: 2MB`（WebClient 默认 256KB，非流式响应稍大即抛异常）。加内存解决不了上下文无界
 - **MCP**：官方 Java SDK 但仅 Tier 2，**第 1 周必须做 spike**（stdio + Streamable HTTP 双传输、`tools/list` 分页、重连语义）。SDK 默认 HTTP 传输是阻塞的 JDK HttpClient，MCP 调用必须 `subscribeOn(boundedElastic)` 隔离到事件循环之外，否则一次慢调用冻结所有 SSE。stdio 模式每个 Pod 各 spawn 一个进程、副本间状态不一致 → **MCP server 应独立部署用 HTTP transport**；server 配置仅管理员可见可改
 
+### 3.6 前端规范
+
+- **类型对齐**：后端 DTO 在 `src/types/` 下有对应 TS 类型，字段名与后端一致；`Result<T>` / `PageResult<T>` 的结构必须与 `hify-shared` 的 `web.Result` / `web.PageResult` 对齐（`code = 0` 成功，错误码前三位等于 HTTP 状态）
+- **接口调用只走 `api/client.ts` 的 `request<T>()`** —— 它负责拆 `Result` 外壳并在 `code !== 0` 时抛 `ApiError`；**页面里不要自己拆 `Result`、也不要自己判断 `code`**
+- **SSE 只走 `api/sse.ts` 的 `streamSse`** —— 不要在别处再写一份 `fetch` 解析帧的代码；`onError` 要区分「用户主动 abort」和「真的出错」，前者不算错误
+- **类型导入必须 `import type`** —— `verbatimModuleSyntax` 开着，写成普通 import 会在只导入类型的文件里留下运行时依赖
+- **模板里不能写 `import.meta`** —— Vue 模板不编译 ESM 表达式，需要的常量要在 `<script setup>` 里取出来再用（`const isDev = import.meta.env.DEV`）
+- **卸载必须清理**：SSE 连接、定时器、`addEventListener` 一律在 `onBeforeUnmount` 里撤销；`AbortController` 由 `stores/connection.ts` 统一持有，不要在组件里另起一份
+- **组件一律 `<script setup lang="ts">` + Composition API**；组件名与文件名都用 PascalCase；props 用 `defineProps<{...}>()` 声明类型
+- **禁止 `any`** —— `strict` 开着；确实需要逃生舱时必须在同一行注释写清理由
+- **网络层错误要给用户看得懂的文案** —— 后端返回的业务 message 已做过脱敏，可直接展示；「没有响应」这类网络错误要自己转成人话（「后端服务暂时不可用」），不要把 `AxiosError` 原文弹出来
+
 ---
 
 ## 四、关键决策
@@ -388,6 +427,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **`api`/`internal` 双层 + 跨模块只传 DTO** —— 这是「拆微服务不返工」的前提，事后补要改所有接口签名。代价是多写一层包。
 - **扩展点用依赖倒置** —— `tool` 既是工具提供者又是来源的消费者，让 `tool` 依赖 `mcp` 会成环。
 - **跨模块事件不引入 MQ** —— 四个事件都是低频的「进程内缓存失效」信号，拆成独立服务时改用 Redis + TTL 刷新即可。**只有出现真正的跨进程业务契约时才引 MQ。**
+- **前端不进 Maven reactor** —— `hify-web/` 是独立的 npm 工程，产物是静态文件交给 nginx 托管。理由：前后端的依赖体系、发布节奏、CI 缓存策略都不同，塞进同一个 reactor 只会让 `mvn verify` 变慢，而且前端构建失败不该挡住后端发版。**替代方案：前端构建产物塞进 `hify-app` 的 jar**（省一次部署，但把两套工具链焊死在一个生命周期里）。
 
 ### 技术选型
 - **Spring Boot + MyBatis-Plus + Vue3/Element Plus** —— 工程化成熟度让一个人能快速交付完整系统。代价：相比 FastAPI 多写约 2–4 天基础设施代码（统一异常体系、事务边界规范、Security 自拼），换来 CRUD 效率与管理后台开发速度。

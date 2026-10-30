@@ -114,7 +114,7 @@ services:
 
   web:
     build:
-      context: ./web
+      context: ./hify-web
     container_name: hify-web
     ports:
       - "${HIFY_WEB_PORT:-8083}:80"

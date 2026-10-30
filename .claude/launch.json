@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hify-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "hify-web", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

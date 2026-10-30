@@ -5,7 +5,7 @@ target/
 docs/
 *.md
 !README.md
-web/
+hify-web/
 .idea/
 .vscode/
 *.iml
