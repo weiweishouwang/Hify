@@ -3,6 +3,7 @@
 > 适用范围：MySQL 8.x（业务库）+ PostgreSQL 16 + pgvector（向量库）
 > 目标：让 AI 或人按本文建表时，无需再做设计判断，直接照抄。
 > 配套：`docs/superpowers/specs/2026-10-29-hify-code-organization.md`（模块归属与表前缀）、`CLAUDE.md`（关键约束）
+> 建表脚本：`hify-app/src/main/resources/db/schema.sql`（MySQL）与 `schema-pg.sql`（PG），两套语法不通用，分两个文件。
 
 ---
 

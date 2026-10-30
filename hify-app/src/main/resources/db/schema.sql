@@ -43,7 +43,8 @@
 #
 -- 执行
 --   mysql -uhify -phify hify < hify-app/src/main/resources/db/schema.sql
---   PG 部分见文件末尾那段带 BEGIN PG SECTION 标记的注释，里面有提取命令。
+-- 向量库在另一个数据库，DDL 在同目录的 schema-pg.sql（PostgreSQL 语法，
+-- 混进本文件会让 mysql 客户端在最后一行报错，所以拆开）。
 
 CREATE TABLE `user` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',
@@ -461,33 +462,3 @@ PARTITION BY RANGE COLUMNS(`created_at`) (
   PARTITION `pmax`    VALUES LESS THAN (MAXVALUE)
 );
 
--- ===== BEGIN PG SECTION =====
--- 向量库（PostgreSQL + pgvector）。与 MySQL 是两套独立数据，靠 kb_id / doc_id
--- 逻辑关联，跨库没有外键。
---
--- ⚠️ 这一段不能用 MySQL 客户端执行，要单独喂给 psql：
---    sed -n '/^-- ===== BEGIN PG SECTION =====$/,/^-- ===== END PG SECTION =====$/p' \
---      hify-app/src/main/resources/db/schema.sql | sed '1d;$d' \
---      | docker compose exec -T postgres psql -U hify -d hify
---
--- ⚠️ embedding 的维度（1536）建表时定死，换维度不同的 embedding 模型
---    必须重建这张表——PG 不支持 ALTER 改 vector 维度。
-CREATE TABLE vec_chunk (
-  id          BIGSERIAL    PRIMARY KEY,
-  kb_id       BIGINT       NOT NULL,
-  doc_id      BIGINT       NOT NULL,
-  chunk_index INT          NOT NULL,
-  content     TEXT         NOT NULL,
-  embedding   vector(1536) NOT NULL,
-  metadata    JSONB,
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-  CONSTRAINT uk_vec_chunk_doc_idx UNIQUE (doc_id, chunk_index)
-);
-
--- 按知识库过滤（删除与列表用）
-CREATE INDEX idx_vec_chunk_kb ON vec_chunk (kb_id);
-
--- 余弦距离 <-> 必须配 vector_cosine_ops；m 与 ef_construction 建索引时定死，改动需重建
-CREATE INDEX idx_vec_chunk_embedding_hnsw ON vec_chunk
-  USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
--- ===== END PG SECTION =====

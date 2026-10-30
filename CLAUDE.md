@@ -172,7 +172,9 @@ MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机
 
 **MySQL 16 张（业务库）+ PostgreSQL 1 张（向量库）**；若一期不做发布快照表（`ai_agent_version`），MySQL 为 15 张。ER 图见 `docs/diagrams/hify-data-model.svg`。
 
-**建表 DDL**：`hify-app/src/main/resources/db/schema.sql`（16 张 MySQL 表 + 文件末尾的 PG 段）。
+**建表 DDL**：`hify-app/src/main/resources/db/schema.sql`（MySQL 业务库 16 张表）与
+`hify-app/src/main/resources/db/schema-pg.sql`（PG 向量库 `vec_chunk`）——**分两个文件**，
+因为两套数据库语法不通用，混在一个文件里会让 mysql 客户端在最后一行报错。
 字段类型、索引清单、分区与验收清单见 `docs/superpowers/specs/2026-10-29-hify-database-spec.md`。
 
 | 模块 | 表 |
