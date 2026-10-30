@@ -59,12 +59,13 @@
 | `hify-agent` | Agent 配置的存取与组装 | shared, ai, tool, knowledge | `ai_agent`（`ai_agent_version` 可选，一期不做） |
 | `hify-conversation` | 会话、消息、流式对话编排 | shared, ai, tool, knowledge, agent | `conv_*` |
 | `hify-workflow` | 工作流定义的存取与执行（6 种节点） | shared, ai, tool, knowledge, agent | `wf_*` |
+| `hify-demo` | **CRUD 演示**，不是业务模块：把 api/internal 分层、DTO 校验、分页、统一响应完整走一遍，作为写业务模块的模板 | shared | `demo_*` |
 | `hify-app` | 启动、装配、静态资源与反代配置；**唯一可执行模块** | 全部 | — |
 
 依赖图形状 —— **箭头指向依赖者**（`A → B` 表示 **B 依赖 A**，与「A → B = A 依赖 B」的直觉相反，务必按此读）：
 
 ```
-hify-shared → hify-ai / hify-tool / hify-knowledge
+hify-shared → hify-ai / hify-tool / hify-knowledge / hify-demo
 hify-tool   → hify-mcp
 hify-ai + hify-tool + hify-knowledge → hify-agent
 hify-ai + hify-tool + hify-knowledge + hify-agent → hify-conversation / hify-workflow
@@ -113,9 +114,13 @@ com.hify.<module>/
 
 **`api` 包的未来形态**：现在 `api` 是同一个 artifact 内的一个包。将来某个模块拆成独立服务时，`api` 包会**原样复制**过去，成为 RPC 契约的来源——所以它的接口签名必须「远程调用友好」（§3.2）。**这是「模块内部不用动、只改传输层」这个承诺的兑现前提，改接口签名前先想清楚这一点。**
 
+**分页响应不要套两层**：`PageResult` 已经继承了 `Result`，controller 直接返回 `PageResult` 就行。再套一层 `Result.ok(pageResult)` 响应里会出现两层 `code/message/data`，前端 `PageResult` 类型对不上。
+
+**`hify-demo` 是模板不是业务**：`hify-demo/` 里的 `DemoItem` 走通了完整分层（`api` 放 DTO 与 Service 接口、`internal` 放 Controller/ServiceImpl/Mapper/Entity/Converter），写业务模块时照着抄即可；演示结束连同 `demo_item` 表一起删。
+
 #### `hify-shared` 已落地的共享基础设施
 
-按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 106 个单元测试全绿。**
+按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 140 个单元测试全绿。**
 
 | 包 | 内容 |
 |---|---|
@@ -176,9 +181,9 @@ MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机
 
 ### 2.4 数据模型
 
-**MySQL 16 张（业务库）+ PostgreSQL 1 张（向量库）**；若一期不做发布快照表（`ai_agent_version`），MySQL 为 15 张。ER 图见 `docs/diagrams/hify-data-model.svg`。
+**MySQL 16 张（业务库）+ PostgreSQL 1 张（向量库）**；若一期不做发布快照表（`ai_agent_version`），MySQL 为 15 张。ER 图见 `docs/diagrams/hify-data-model.svg`。另有 1 张**演示表** `demo_item`（`hify-demo` 模块用，不是业务表，演示结束随模块一起删）。
 
-**建表 DDL**：`hify-app/src/main/resources/db/schema.sql`（MySQL 业务库 16 张表）与
+**建表 DDL**：`hify-app/src/main/resources/db/schema.sql`（MySQL 业务库 16 张表 + 演示表）与
 `hify-app/src/main/resources/db/schema-pg.sql`（PG 向量库 `vec_chunk`）——**分两个文件**，
 因为两套数据库语法不通用，混在一个文件里会让 mysql 客户端在最后一行报错。
 字段类型、索引清单、分区与验收清单见 `docs/superpowers/specs/2026-10-29-hify-database-spec.md`。

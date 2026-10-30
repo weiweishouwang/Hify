@@ -462,3 +462,19 @@ PARTITION BY RANGE COLUMNS(`created_at`) (
   PARTITION `pmax`    VALUES LESS THAN (MAXVALUE)
 );
 
+-- ══ 演示表 ══════════════════════════════════════════════════════════
+-- CRUD 演示用表（hify-demo 模块）。演示结束删掉整个 hify-demo 目录时，
+-- 这张表也一并删掉即可。它没有 public_id——演示接口直接用自增 id。
+CREATE TABLE `demo_item` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',
+  `name`       VARCHAR(128) NOT NULL DEFAULT ''                     COMMENT '名称',
+  `status`     INT          NOT NULL DEFAULT 0                     COMMENT '状态：0 草稿 / 1 启用 / 2 停用',
+  `created_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
+  `updated_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间(UTC)',
+  `created_by` BIGINT UNSIGNED NULL                                 COMMENT '创建者 user.id',
+  `deleted`    TINYINT         NOT NULL DEFAULT 0                  COMMENT '逻辑删除：0 未删除 / 1 已删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='CRUD 演示条目。演示用表，不是业务表';
+

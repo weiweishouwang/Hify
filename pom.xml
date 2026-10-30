@@ -21,6 +21,7 @@
     <module>hify-agent</module>
     <module>hify-conversation</module>
     <module>hify-workflow</module>
+    <module>hify-demo</module>
     <module>hify-app</module>
   </modules>
 
@@ -88,6 +89,11 @@
       <dependency>
         <groupId>com.hify</groupId>
         <artifactId>hify-workflow</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.hify</groupId>
+        <artifactId>hify-demo</artifactId>
         <version>${project.version}</version>
       </dependency>
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.hify</groupId>
+    <artifactId>hify-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>hify-demo</artifactId>
+  <packaging>jar</packaging>
+
+  <name>hify-demo</name>
+  <description>CRUD 演示：展示 api/internal 分层、DTO 校验、分页与统一响应怎么落地</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.hify</groupId>
+      <artifactId>hify-shared</artifactId>
+    </dependency>
+  </dependencies>
+
+  <!--
+    这是一个演示模块，不承载业务。它存在的意义是把「Controller → Service → ServiceImpl
+    → Mapper → Entity → DTO」这套分层完整走一遍，作为写业务模块时的模板。
+    演示结束可以直接删掉整个目录。
+  -->
+</project>
