@@ -99,6 +99,13 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        # MySQL 挂了就读不到 Agent 配置，等于在服务一个必然失败的请求 —— 必须摘流量
+        readiness:
+          include: readinessState,db
+        # liveness 只看进程自身：依赖抖动不该触发重启（重启也修不好，还掐断所有 SSE）
+        liveness:
+          include: livenessState
       show-details: never
   metrics:
     tags:
