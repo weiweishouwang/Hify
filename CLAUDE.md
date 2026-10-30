@@ -243,7 +243,7 @@ hify-web/
 ├── env.d.ts           Vite 环境变量类型
 └── src/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
-    ├── views/         页面：模型管理 / Agent 管理 / 对话（+ 知识库 / 工作流 / 日志 的占位页）
+    ├── views/         页面：provider/（模型提供商，列表用 HifyTable + HifyFormDialog）、agent / chat / knowledge / workflow / log（占位页）
     ├── components/    通用组件：HifyTable（列表表格）、HifyFormDialog（表单弹窗）、PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
     ├── composables/  通用逻辑：useRequest（请求三态）、useConfirm（删除确认）
     ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
@@ -265,7 +265,7 @@ hify-web/
 **通用组件与 composable**（新页面一律用这几个，不要再各写一遍）
 
 - **`HifyTable.vue`** —— 列表页表格。props：`columns`（label/prop/width/minWidth/align/fixed/formatter/slot）、`api`（`(params: {page, size}) => Promise<{data, total}>`）、`paginated`、`pageSize`、`rowKey`、`emptyText`。内部管 loading、分页参数、取数、空状态（`el-empty`）；`defineExpose` 暴露 `refresh()`，父组件增删改后调它刷新。**要自定义渲染的列在 `columns` 里写 `slot: 'xxx'`，父组件提供同名插槽**（插槽拿到 `row` / `index` / `value`）
-- **`HifyFormDialog.vue`** —— 表单弹窗。`v-model` 控制显隐，`v-model:loading` 接提交中的状态（**由父组件用 `useRequest` 的 loading 驱动**），`rules` 传 Element 的 `FormRules`。`defineExpose` 暴露 `open(data?)`：**传 data 是编辑模式（表单预填），不传是新增**。校验通过才触发 `submit` 事件，**API 调用由父组件做**；关闭时自动重置表单
+- **`HifyFormDialog.vue`** —— 表单弹窗。`v-model` 控制显隐，`v-model:loading` 接提交中的状态（**由父组件用 `useRequest` 的 loading 驱动**），`rules` 传 Element 的 `FormRules`。`defineExpose` 暴露 `open(data?)`：**传 data 是编辑模式（表单预填），不传是新增**。校验通过才触发 `submit` 事件，**API 调用由父组件做**；关闭时自动重置表单。**泛型参数靠 props 推断** —— `initial-values` 的值要显式标注类型（`satisfies Partial<Form>`），写成裸字面量的话字面量字段会被推成 `string`，泛型就散了
 - **`useRequest(api)`** —— 返回 `{ data, loading, error, execute }`，自动管理请求三态，**失败不抛异常**（错误提示已由请求层弹出），页面里不用写 try/catch/finally
 - **`useConfirm(message, api, options?)`** —— 删除确认。返回 `() => Promise<boolean>`：**确认 → 调接口 → 提示成功**一行搞定；用户取消或接口失败都返回 false（不抛异常、不重复提示）
 - **`utils/notify.ts`** —— `notifySuccess` / `notifyError` / `notifyWarning`，统一时长与外观。**接口失败不要用它** —— 请求拦截器已经弹过了，再弹就是两次 toast
@@ -502,6 +502,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **接口调用只走 `utils/request.ts` 的 `get` / `post` / `put` / `del`** —— baseURL 是 `/api`，实际路径要带 `/v1` 前缀（`${API_PREFIX}/xxx`）。响应拦截器已经**自动解包出 `data`**、并在失败时 `ElMessage.error` + reject，**调用方不要重复解包、也不要再弹一次 toast**
 - **SSE 只走 `api/sse.ts` 的 `streamSse`** —— 不要在别处再写一份 `fetch` 解析帧的代码；`onError` 要区分「用户主动 abort」和「真的出错」，前者不算错误
 - **类型导入必须 `import type`** —— `verbatimModuleSyntax` 开着，写成普通 import 会在只导入类型的文件里留下运行时依赖
+- **模板属性值里不能出现 `//`** —— vue-tsc 会把它当成注释，类型检查报「找不到 xxx」这种跟实际代码无关的假错（`placeholder="https://..."` 就会中招）。**要写网址就放到脚本常量里再绑定**：`:placeholder="urlHint"`
 - **模板里不能写 `import.meta`** —— Vue 模板不编译 ESM 表达式，需要的常量要在 `<script setup>` 里取出来再用（`const isDev = import.meta.env.DEV`）
 - **卸载必须清理**：SSE 连接、定时器、`addEventListener` 一律在 `onBeforeUnmount` 里撤销；`AbortController` 由 `stores/connection.ts` 统一持有，不要在组件里另起一份
 - **组件一律 `<script setup lang="ts">` + Composition API**；组件名与文件名都用 PascalCase；props 用 `defineProps<{...}>()` 声明类型

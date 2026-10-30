@@ -27,7 +27,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/models',
     name: 'models',
-    component: () => import('@/views/model/ProviderList.vue'),
+    component: () => import('@/views/provider/ProviderList.vue'),
     meta: { title: '模型管理', requiresAuth: true },
   },
   {
