@@ -162,6 +162,12 @@ Ingress (nginx-ingress) ── TLS 终止 · 路由 · SSE 超时与缓冲策略
 
 MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机 spawn 的子进程，K8s 多副本会导致每个 Pod 各起一份、状态互不一致。
 
+**健康检查分两组，不要混淆：**
+- `/api/v1/health` —— 业务端点，给调用方用，返回统一 `Result` 结构
+- `/actuator/health/liveness` —— 只含 `livenessState`。依赖抖动**不触发重启**：重启修不好依赖，还掐断所有 SSE
+- `/actuator/health/readiness` —— 含 `readinessState,db`。MySQL 挂了读不到 Agent 配置，等于在服务必然失败的请求，必须摘流量
+- **Redis 不进 readiness**——它挂了只该降级（限流/锁失效），不该把全部副本踢出负载均衡，那个爆炸半径大得多
+
 ### 2.4 数据模型
 
 **MySQL 15 张（业务库）+ PostgreSQL 1 张（向量库）**；若一期不做发布快照表（`ai_agent_version`），MySQL 为 14 张。ER 图见 `docs/diagrams/hify-data-model.svg`。
