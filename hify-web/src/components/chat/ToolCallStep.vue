@@ -41,9 +41,9 @@ const statusText = computed(() => {
   gap: var(--hify-space-2);
   margin: var(--hify-space-2) 0;
   padding: var(--hify-space-2) var(--hify-space-3);
-  font-size: var(--hify-text-sm);
-  background: var(--hify-bg-subtle);
-  border: 1px solid var(--hify-border);
+  font-size: var(--hify-font-size-sm);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
   border-radius: var(--hify-radius-md);
 }
 
@@ -52,7 +52,7 @@ const statusText = computed(() => {
 }
 
 .tool-call__status {
-  color: var(--hify-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .tool-call__result {
@@ -61,8 +61,8 @@ const statusText = computed(() => {
   padding: var(--hify-space-2);
   max-height: 200px;
   overflow: auto;
-  font-size: var(--hify-text-xs);
-  background: var(--hify-bg-surface);
+  font-size: var(--hify-font-size-xs);
+  background: var(--color-bg-card);
   border-radius: var(--hify-radius-sm);
   white-space: pre-wrap;
   word-break: break-all;

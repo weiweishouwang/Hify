@@ -1,9 +1,10 @@
 /**
- * 基础样式：重置 + 排版 + 少量通用类。
+ * 基础样式：重置 + 排版 + 布局原语 + Element Plus 的外观覆盖。
  *
  * 颜色、圆角、阴影一律引用 tokens.css 里的变量，这里不写死值。
  */
 
+/* ── 重置 ──────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
@@ -17,15 +18,15 @@ body,
 
 body {
   font-family: var(--hify-font-sans);
-  font-size: var(--hify-text-base);
+  font-size: var(--hify-font-size-base);
   line-height: var(--hify-leading-normal);
-  color: var(--hify-text-primary);
-  background: var(--hify-bg-canvas);
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 标题：字重到 600 就够，再重在中文里会发糊 */
+/* ── 排版 ──────────────────────────────────────────────────────── */
 h1,
 h2,
 h3,
@@ -33,19 +34,19 @@ h4 {
   margin: 0;
   font-weight: var(--hify-weight-semibold);
   line-height: var(--hify-leading-tight);
-  color: var(--hify-text-primary);
+  color: var(--color-text-primary);
 }
 
 h1 {
-  font-size: var(--hify-text-2xl);
+  font-size: var(--hify-font-size-2xl);
 }
 
 h2 {
-  font-size: var(--hify-text-xl);
+  font-size: var(--hify-font-size-xl);
 }
 
 h3 {
-  font-size: var(--hify-text-lg);
+  font-size: var(--hify-font-size-lg);
 }
 
 p {
@@ -62,33 +63,109 @@ kbd,
 
 code {
   padding: 1px 5px;
-  background: var(--hify-bg-muted);
+  background: var(--color-bg-muted);
   border-radius: var(--hify-radius-xs);
 }
 
 /* 键盘焦点统一走主色焦点环，别让浏览器默认的描边到处乱跑 */
 :focus-visible {
   outline: none;
-  box-shadow: var(--hify-ring);
+  box-shadow: var(--color-ring);
   border-radius: var(--hify-radius-sm);
 }
 
-/* 页面标题：占位页与正式页面共用 */
-.page-title {
-  font-size: var(--hify-text-lg);
-  font-weight: var(--hify-weight-semibold);
-  color: var(--hify-text-primary);
+/* ── 布局原语 ──────────────────────────────────────────────────── */
+
+/**
+ * 页面容器：浅灰画布上的内容区。
+ * 页边距 24px，页面里的卡片与它拉开层次。
+ */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hify-element-gap);
+  padding: var(--hify-page-padding);
 }
+
+/**
+ * 内容卡片：白底 + 轻阴影 + 圆角，压在浅灰画布上。
+ * 内边距 20px。
+ */
+.page-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--hify-radius-lg);
+  box-shadow: var(--hify-shadow-sm);
+  padding: var(--hify-card-padding);
+}
+
+/* ── Element Plus 外观覆盖 ─────────────────────────────────────── */
+
+/* 卡片：白底 + 圆角 + 轻阴影，和画布分层 */
+.el-card {
+  --el-card-bg-color: var(--color-bg-card);
+  --el-card-border-color: var(--color-border);
+  --el-card-border-radius: var(--hify-radius-lg);
+  --el-card-padding: var(--hify-card-padding);
+  box-shadow: var(--hify-shadow-sm);
+}
+
+/**
+ * 主按钮：蓝紫渐变 + 辉光。
+ *
+ * 这是整个界面唯一带渐变的按钮 —— 渐变留给"当前页面最主要的那个操作"，
+ * 一次只该有一个。次要操作留白底描边，危险操作走红色。
+ *
+ * 用 :not() 排除 plain / text / link / disabled：这几种变体本来就没有
+ * 实底，套上渐变会变成怪东西。
+ */
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  background: var(--color-primary-gradient);
+  border-color: transparent;
+  box-shadow: var(--color-glow-primary);
+}
+
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover,
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):focus {
+  background: var(--color-primary-gradient-hover);
+  border-color: transparent;
+  box-shadow: var(--color-glow-primary);
+}
+
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):active {
+  background: var(--color-primary-600);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* 次要操作：白底 + 描边（Element 默认按钮就是白底描边，这里只把底色钉死成纯白） */
+.el-button:not(.is-text):not(.is-link) {
+  --el-button-bg-color: var(--color-bg-card);
+  --el-button-border-color: var(--color-border);
+  --el-button-hover-bg-color: var(--color-bg-hover);
+  --el-button-hover-border-color: var(--color-border-strong);
+  --el-button-hover-text-color: var(--color-primary-600);
+}
+
+/* 危险操作：红色 */
+.el-button--danger:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  --el-button-bg-color: var(--color-danger-500);
+  --el-button-border-color: transparent;
+  --el-button-hover-bg-color: var(--color-danger-600);
+  --el-button-hover-border-color: transparent;
+}
+
+/* ── 通用类 ────────────────────────────────────────────────────── */
 
 /* 区块说明：一行灰字，讲清这块是干什么的 */
 .page-subtitle {
-  font-size: var(--hify-text-sm);
-  color: var(--hify-text-secondary);
+  font-size: var(--hify-font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 /* 表格里的次要信息列 */
 .text-muted {
-  color: var(--hify-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 /* 状态点：健康用薄荷绿，进行中用主色，异常用 danger */
@@ -101,15 +178,15 @@ code {
 }
 
 .status-dot--healthy {
-  background: var(--hify-secondary-500);
+  background: var(--color-secondary-500);
 }
 
 .status-dot--live {
-  background: var(--hify-primary-500);
+  background: var(--color-primary-500);
 }
 
 .status-dot--down {
-  background: var(--hify-danger-500);
+  background: var(--color-danger-500);
 }
 
 /* 尊重系统的"减少动效"设置 */

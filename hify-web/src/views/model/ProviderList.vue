@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { getHealth } from '@/api/health'
 
 /** 后端连通状态：checking 探测中 / ok 已连接 / down 未连接。 */
@@ -33,26 +34,48 @@ const healthType = computed<'success' | 'danger' | 'info'>(() => {
   }
 })
 
-onMounted(async () => {
+async function checkHealth(): Promise<void> {
+  health.value = 'checking'
   try {
     healthDetail.value = await getHealth()
     health.value = 'ok'
   } catch {
     health.value = 'down'
   }
-})
+}
+
+onMounted(checkHealth)
 </script>
 
 <template>
-  <div>
-    <div class="page-title">模型提供商管理</div>
+  <div class="page">
+    <PageHeader
+      title="模型管理"
+      description="接入 OpenAI 兼容端点、Anthropic 与 Gemini 三套协议，维护模型接入点与可用模型。"
+    >
+      <template #actions>
+        <el-tag :type="healthType" effect="light">{{ healthText }}</el-tag>
+        <el-button @click="checkHealth">刷新状态</el-button>
+      </template>
+    </PageHeader>
 
-    <el-tag :type="healthType" class="health">{{ healthText }}</el-tag>
+    <div class="page-card">
+      <el-empty description="模型接入点的增删改查接口尚未实现">
+        <p class="hint">
+          后端归属 hify-ai 模块。模型接入点与模型分两张表——连通性测试的粒度决定表的粒度：
+          端点能通不代表某个模型名在该账号下可用。
+        </p>
+      </el-empty>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.health {
-  margin-top: 12px;
+.hint {
+  max-width: 520px;
+  margin: 0 auto;
+  color: var(--color-text-secondary);
+  font-size: var(--hify-font-size-sm);
+  line-height: 1.7;
 }
 </style>

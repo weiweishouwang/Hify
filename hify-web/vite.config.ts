@@ -1,7 +1,13 @@
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+
+/** package.json 里的版本号，注入给前端显示（侧边栏底部）。 */
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
+  version: string
+}
 
 // Hify 前端构建配置
 //
@@ -15,6 +21,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+
+    // 版本号来自 package.json，不在前端代码里写死
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
 
     resolve: {
       alias: {

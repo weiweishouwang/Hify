@@ -149,8 +149,8 @@ onBeforeUnmount(() => {
 
 .chat__composer {
   padding: var(--hify-space-3) var(--hify-space-4);
-  background: var(--hify-bg-surface);
-  border: 1px solid var(--hify-border);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--hify-radius-lg);
 }
 

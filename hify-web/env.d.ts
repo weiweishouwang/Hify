@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** 应用版本号，由 vite 的 define 从 package.json 注入。 */
+declare const __APP_VERSION__: string

@@ -244,18 +244,22 @@ hify-web/
 └── src/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
     ├── views/         页面：模型管理 / Agent 管理 / 对话（+ 知识库 / 工作流 / 日志 的占位页）
-    ├── components/    业务组件：chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
+    ├── components/    业务组件：PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
     ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
     ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
     ├── router/        路由表 + 登录守卫
     ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
     ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts（令牌存取）、id.ts
-    └── styles/        tokens.css（设计系统：全部 CSS 变量 + Element Plus 映射）、index.css（重置与排版）
+    └── styles/        tokens.css（设计系统：颜色 `--color-*` + 尺寸动效 `--hify-*`，并映射 Element Plus）、index.css（重置、排版、布局原语、按钮外观）
 ```
 
 - **`App.vue` 就是布局**：左侧 `el-menu` 菜单栏 + 右侧内容区 `router-view`。因此**路由表全是顶层路由，不套一层带 `children` 的布局路由** —— 套了会出现「App.vue 渲染 App.vue」的递归
 - **菜单项与路由一一对应**：菜单数组在 `App.vue` 的 `menus` 里，加一项要同时加一条路由
 - **独立页面**（登录页、404）用 `meta.hideLayout` 标记，`App.vue` 据此隐藏侧边栏与顶栏，页面自己套 `BlankLayout`
+- **侧边栏可折叠**：`collapsed` 状态在 `App.vue` 里，折叠后只留图标（`el-menu` 的 `collapse` 属性 + `el-aside` 的宽度），底部是折叠开关与版本号。**版本号由 vite 的 `define` 从 `package.json` 注入**（`__APP_VERSION__`），不写死在前端代码里
+- **顶栏左边是面包屑**（`route.matched` 里带 `title` 的各级 + 一个「首页」），右边是头像与用户名
+- **页面统一用 `components/PageHeader.vue` 写标题区**：标题 + 描述 + 右侧操作区（`#actions` 插槽）。**页面自己不要再写一份标题**，位置与间距由组件统一
+- **页面根节点用 `.page`**（浅灰画布 + 24px 页边距），内容块用 `.page-card`（白底 + 轻阴影 + 圆角 + 20px 内边距）
 
 - **管理后台**（模型 / Agent / 知识库 / 工作流 / 日志）用 Element Plus 的表格与表单即可，不额外引入 UI 框架
 - **对话页是唯一的自定义界面**：消息气泡 + 流式增量渲染 + 工具调用中间态
@@ -493,8 +497,9 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **组件一律 `<script setup lang="ts">` + Composition API**；组件名与文件名都用 PascalCase；props 用 `defineProps<{...}>()` 声明类型
 - **禁止 `any`** —— `strict` 开着；确实需要逃生舱时必须在同一行注释写清理由
 - **网络层错误要给用户看得懂的文案** —— 后端返回的业务 message 已做过脱敏，可直接展示；「没有响应」这类网络错误要自己转成人话（「后端服务暂时不可用」），不要把 `AxiosError` 原文弹出来
-- **颜色、圆角、阴影、间距一律走 `src/styles/tokens.css` 的 `--hify-*` 变量**，组件里不写死色值与像素值 —— 要改主题只改 tokens.css 一个文件
-- **`tokens.css` 必须在 `element-plus/dist/index.css` 之后引入** —— 它把 Element Plus 的 `--el-*` 映射到 `--hify-*`，不映射的话按钮、表格、菜单还是它自己那套蓝，界面会变成"两套颜色拼起来"
+- **颜色、圆角、阴影、间距一律走 `src/styles/tokens.css` 的变量**，组件里不写死色值与像素值 —— 要改主题只改 tokens.css 一个文件。**颜色用 `--color-*`（bg / text / border / primary / secondary / 状态色），尺寸与动效用 `--hify-*`（radius / shadow / duration / space / font-size …）** —— 字号叫 `--hify-font-size-*`，不叫 `--hify-text-*`（那是颜色）
+- **`tokens.css` 必须在 `element-plus/dist/index.css` 之后引入** —— 它把 Element Plus 的 `--el-*` 映射到 `--color-*`，不映射的话按钮、表格、菜单还是它自己那套蓝，界面会变成"两套颜色拼起来"
+- **按钮分三档**：主要操作用 `type="primary"`（**蓝紫渐变 + 辉光**，整个界面唯一带渐变的按钮，一次只该有一个）；次要操作不写 `type`（白底 + 描边）；危险操作用 `type="danger"`（红）
 - **圆角按元素大小分级**（`--hify-radius-xs` 3px → `2xl` 20px），不要万物同一个圆角 —— 标签 3、控件 4/6、卡片 10、弹层 14
 - **等宽字体留给机器可读的值**（模型名、API Key、ID、指标）—— 是语义不是装饰；正文用系统字体栈，中文落到苹方 / 思源
 - **动效统一走 `--hify-duration-*` + `--hify-ease-*`**，并尊重 `prefers-reduced-motion`
