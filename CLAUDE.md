@@ -339,6 +339,7 @@ docker compose down -v           # 停并清空数据
 - web 镜像是两段式构建（node 阶段 `npm run build` → nginx 阶段只放 `dist/`），**本地 compose 与生产 K8s 用的是同一个镜像、同一个 `nginx.conf`**
 
 - 父 pom `com.hify:hify-parent` 统一管理全部依赖版本（导入 `spring-boot-dependencies` BOM + 内部模块 + 第三方），**子模块 pom 引用内部模块时不写 `<version>`**
+- **OkHttp 的版本在父 pom 的 `dependencyManagement` 里定** —— Spring Boot 的 BOM 不管 OkHttp（`spring-boot-dependencies` 里没有 `okhttp-bom`），不自己定版本就会随依赖树漂
 - `hify-app` 是唯一可执行模块（`spring-boot-maven-plugin:repackage`，启动类 `com.hify.app.HifyApplication`）
 - **依赖环检测**：模块级的环由 Maven 在构建 reactor 时直接报错；artifact 级的环由 enforcer 的 `banCircularDependencies` 在 `verify` 阶段覆盖（该规则需显式引入 `org.codehaus.mojo:extra-enforcer-rules`）
 
@@ -433,12 +434,13 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 ### 3.4 流式（SSE）
 
 - **用 Spring MVC，不引入 WebFlux** —— MyBatis-Plus 是 JDBC 阻塞，WebFlux 下要用 R2DBC 而 MP 的 R2DBC 支持不成熟
-- 返回 `Flux<ServerSentEvent>`，**必须 `.publishOn(专用调度器)` 把 servlet 写出移出 Reactor 事件循环**
+- 返回 `Flux<ServerSentEvent>`，**必须 `.publishOn(专用调度器)` 把 servlet 写出移出 Reactor 事件循环**。controller 上要声明 `produces = MediaType.TEXT_EVENT_STREAM` —— Spring MVC 的 `ReactiveTypeHandler` 只有在内容类型协商到 `text/event-stream` 时才走 `SseEmitter` 分支做 SSE 分帧，否则退化成 `ResponseBodyEmitter` 逐元素用 Jackson 写，出来的是 JSON 而不是 SSE 帧
 - **`boundedElastic` 必须显式配置**：默认是 `10 × availableProcessors()`，容器 `limits.cpu: 2000m` → 只有 20 线程，而这正是 SSE 写出池；一个慢客户端的阻塞写就占住一个，20 个慢客户端能让全部 SSE 停摆而 CPU 指标正常
   ```java
   Scheduler SSE_WRITE = Schedulers.newBoundedElastic(48, 1000, 60, TimeUnit.SECONDS);
   ```
   **不要靠调高 CPU limit 来解决线程池问题** —— CPU limit 是资源决策，线程池是正确性决策
+- **上游是阻塞的**（`LlmHttpClient` 跑在 `llmExecutor` 上，见 §3.5）→ **往浏览器写帧的线程必须和 `llmExecutor` 分开**：一个慢客户端的阻塞写如果占住 `llmExecutor` 线程，就等于吃掉一个 LLM 并发名额
 - **必须显式设长超时**：Tomcat `asyncTimeout` 默认 30s，会掐断 60s 的生成。`spring.mvc.async.request-timeout: 30m` 或 `new SseEmitter(180_000L)`
 - **必须发心跳**（15–30s）：保活、检测死客户端、防止中间代理掐断空闲连接
 - `ServerSentEvent.data()` **传对象让 Jackson 序列化**，不要传裸 String（含换行会破坏 SSE 分帧）
@@ -449,15 +451,18 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 ### 3.5 LLM 调用
 
 - **统一抽象**：内部只认 `LlmClient{ provider, model, stream(), complete() }` 与 `LlmChunk{ text, toolCall, usage, finishReason }`；各 provider 的 SSE 帧格式差异（OpenAI 的 `data:[DONE]`、Claude 的 `content_block_delta`、Gemini 的 `candidates[]`）在适配器里归一化，引擎不感知
-- **用 WebClient（响应式），不用 RestTemplate（阻塞）** —— 阻塞会占住 Tomcat 线程
-- **每 provider 一个连接池**，`maxConnections` 按并发模型算（云端 48/副本，Ollama 6 因受显存限制），`pendingAcquireTimeout: 5s`，队列有界
-- **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个池
-- **超时四层**：连接 5s（Ollama 2s）、首字节/chunk 空闲 30s（Ollama 90s，冷启动要加载模型）、整体 120s（Ollama 600s）。流式用 `Flux.timeout()` 表达 chunk 空闲超时，不依赖 Reactor Netty `responseTimeout` 的版本语义
+- **传输层用阻塞式的 `shared.http.LlmHttpClient`，不用 WebClient 响应式** —— `post()` 走 RestTemplate（连接 5s / 读 60s），`stream()` 走 OkHttp（连接 5s / 读 120s）自己解析 SSE 帧
+- **调用方必须把它提交到 `llmExecutor` 线程池** —— 两个方法都阻塞，直接在 Controller 里调就是拿 Tomcat worker 线程去等 LLM，60 秒一次的非流式调用能把 200 个线程全锁死
+- **`llmExecutor` 的 50 个线程就是并发 LLM 调用的天花板** —— 队列（100）满且 50 个线程都在跑时，`CallerRunsPolicy` 会让**提交方线程自己执行**；提交方通常是 Tomcat 线程，于是照样被占住。并发模型按这个数算，不要按「Tomcat 有 200 线程」算
+- **SSE 帧自己解析（`shared.http.SseFrameReader`），不要用 `okhttp-sse`** —— 4.12.0 的同步入口 `EventSources.processResponse` 是坏的（`RealEventSource.call` 是 lateinit 没赋值，一调就抛 `UninitializedPropertyAccessException`）；它剩下的异步入口会把并发卡在 OkHttp `Dispatcher` 的 `maxRequestsPerHost`（默认 5）上 —— 同一个 provider 主机最多挂 5 条 SSE。自己读响应体则全程留在调用方线程上，并发数不受 Dispatcher 限制
+- **失败统一转成 `LlmApiException`，用 `LlmErrorKind` 区分** `TIMEOUT` / `AUTH_FAILED` / `RATE_LIMITED` / `UPSTREAM_ERROR`，不靠 message 文本判断。**上游的错误响应体只进 DEBUG 日志，不进异常 message** —— 上游报错文本可能夹带用户输入，随异常一路回显到终端用户那里
+- **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个 `llmExecutor`
+- **超时**：连接 5s、普通请求读 60s、流式读 120s。**流式的读超时是 socket 空闲超时**（OkHttp 的 `readTimeout`）—— 模型慢但一直在吐字不会触发，流卡住才会。整体时长没设硬上限（`callTimeout` 未设），非流式路径靠 60s 读超时兜底，流式路径靠上游的结束信号与业务侧会话超时兜底
 - **重试**：只重试连接失败/超时/429/5xx/529；**指数退避 + full jitter**（`random(0, cap)`，无抖动会在故障期间惊群）；429 优先用服务端 `retry-after`；**流式只在首个 chunk 之前重试**（已输出内容后重试会把重复内容拼进用户的流）；**永不重试工具执行**（有副作用）
 - **熔断按 provider 独立**，且 `ignoreExceptions` 排除 429/鉴权/参数错误（429 是"你太频繁"不是"我坏了"，算进失败率会误开熔断）
 - **降级链是模型接入点配置的一部分**，不在 Agent 里（Agent 的提示词是针对某模型调过的）。**已输出内容后不能再降级**；降级必须对用户可见（响应带 provider 标识）
-- **上下文必须有界**：`max-context-tokens: 16384`、`max-output-tokens: 4096`、`spring.codec.max-in-memory-size: 2MB`（WebClient 默认 256KB，非流式响应稍大即抛异常）。加内存解决不了上下文无界
-- **MCP**：官方 Java SDK 但仅 Tier 2，**第 1 周必须做 spike**（stdio + Streamable HTTP 双传输、`tools/list` 分页、重连语义）。SDK 默认 HTTP 传输是阻塞的 JDK HttpClient，MCP 调用必须 `subscribeOn(boundedElastic)` 隔离到事件循环之外，否则一次慢调用冻结所有 SSE。stdio 模式每个 Pod 各 spawn 一个进程、副本间状态不一致 → **MCP server 应独立部署用 HTTP transport**；server 配置仅管理员可见可改
+- **上下文必须有界**：`max-context-tokens: 16384`、`max-output-tokens: 4096`、`spring.codec.max-in-memory-size: 2MB`（约束的是**入站**请求体；出站不用 WebClient 了，没有它 256KB 那个默认限制）。加内存解决不了上下文无界
+- **MCP**：官方 Java SDK 但仅 Tier 2，**第 1 周必须做 spike**（stdio + Streamable HTTP 双传输、`tools/list` 分页、重连语义）。SDK 默认 HTTP 传输是阻塞的 JDK HttpClient —— **MCP 调用同样要提交到 `llmExecutor`**，否则一次慢调用占住 Tomcat 线程。stdio 模式每个 Pod 各 spawn 一个进程、副本间状态不一致 → **MCP server 应独立部署用 HTTP transport**；server 配置仅管理员可见可改
 
 ### 3.6 前端规范
 
@@ -496,6 +501,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **Spring Boot + MyBatis-Plus + Vue3/Element Plus** —— 工程化成熟度让一个人能快速交付完整系统。代价：相比 FastAPI 多写约 2–4 天基础设施代码（统一异常体系、事务边界规范、Security 自拼），换来 CRUD 效率与管理后台开发速度。
 - **双库：MySQL（业务）+ PostgreSQL/pgvector（向量）** —— MySQL 是团队既有技术栈；向量库独立成 Service 后，将来换 Qdrant/Milvus 只需替换 `knowledge` 模块的数据访问实现。**已否决：整体换 PostgreSQL 单库**（少一个组件，但放弃既有栈）。
 - **不引入 WebFlux** —— MyBatis-Plus 是 JDBC 阻塞，WebFlux 下要用 R2DBC 而 MP 的 R2DBC 支持不成熟。**替代方案：WebFlux + R2DBC 或 Spring Data R2DBC**，代价是重做数据层。
+- **调上游 LLM 用阻塞式客户端 + 专用线程池，不用响应式**（2026-10-30 定）—— `shared.http.LlmHttpClient`（`post()` 走 RestTemplate，`stream()` 走 OkHttp 自己解析 SSE 帧）阻塞，调用方提交到 `llmExecutor`。**替代方案：WebClient + Reactor Netty** —— 每 provider 一个 `ConnectionProvider`、`Flux.timeout()` 表达 chunk 空闲超时、背压，这些语义更贴合流式场景，代价是多一套 Reactor 编程模型、异常传播要绕着写，且与「不引入 WebFlux」的取向冲突更大。选阻塞式的理由：超时与连接语义都直白，适配器就是普通 Java，异常直接往外抛。**代价：并发上限由 `llmExecutor` 的 50 个线程决定，而不是每 provider 的 `maxConnections`；且 `CallerRunsPolicy` 在队列满时会让提交方（多半是 Tomcat 线程）自己跑任务**
 - **LLM 适配器只做 3 个** —— Ollama 有 OpenAI 兼容端点（0.1.x+），不必单写适配器。
 - **模型接入点与模型分两张表** —— **连通性测试的粒度决定表的粒度**：端点能通不代表某个模型名在该账号下可用，一张表表达不了这两件事。
 
