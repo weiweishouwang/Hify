@@ -375,13 +375,25 @@
 
   /* 遮罩用冷色，不用纯黑 */
   --el-mask-color: rgba(20, 24, 40, 0.5);
+}
 
-  /* 表格：表头淡一点，行 hover 用极浅的主色 */
-  --el-table-border-color: var(--color-border);
-  --el-table-header-bg-color: var(--color-bg-subtle);
+/**
+ * 表格专用的变量。
+ *
+ * **必须挂在 `.el-table` 上，不能挂在 `:root`**：Element Plus 把 `--el-table-*`
+ * 声明在 `.el-table` 元素自己身上（`.el-table{--el-table-header-bg-color:…}`），
+ * 元素自己的声明压过从 `:root` 继承下来的值 —— 挂在 `:root` 上等于没写。
+ */
+.el-table {
+  /* 表头用浅灰，和白色表身拉开一条带 */
+  --el-table-header-bg-color: var(--color-bg-secondary);
   --el-table-header-text-color: var(--color-text-secondary);
-  --el-table-tr-bg-color: var(--color-bg-card);
+  /* 行 hover 微微染上主色 */
   --el-table-row-hover-bg-color: var(--color-primary-50);
+  --el-table-current-row-bg-color: var(--color-primary-50);
+  --el-table-border-color: var(--color-border);
   --el-table-bg-color: var(--color-bg-card);
+  --el-table-tr-bg-color: var(--color-bg-card);
   --el-table-text-color: var(--color-neutral-700);
+  --el-table-expanded-cell-bg-color: var(--color-bg-card);
 }

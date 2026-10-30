@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Plus } from '@element-plus/icons-vue'
 import type { FormRules } from 'element-plus'
 import HifyTable, { type HifyTableColumn } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
@@ -114,7 +115,7 @@ const columns: HifyTableColumn<Provider>[] = [
   { label: 'Base URL', slot: 'baseUrl', minWidth: 260, hideOnNarrow: true },
   { label: '状态', slot: 'status', width: 100 },
   { label: '创建时间', prop: 'createdAt', width: 160, hideOnNarrow: true },
-  { label: '操作', slot: 'actions', width: 150, fixed: 'right' },
+  { label: '操作', slot: 'actions', width: 160, fixed: 'right' },
 ]
 
 const tableRef = ref<{ refresh: () => Promise<void> }>()
@@ -248,7 +249,10 @@ async function handleDelete(row: Provider): Promise<void> {
       description="统一管理模型接入点：OpenAI 兼容端点、Claude、Gemini 与本地 Ollama 的连接配置。"
     >
       <template #actions>
-        <el-button type="primary" @click="openCreate">新增提供商</el-button>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus /></el-icon>
+          新增提供商
+        </el-button>
       </template>
     </PageHeader>
 
@@ -266,8 +270,8 @@ async function handleDelete(row: Provider): Promise<void> {
         </template>
 
         <template #actions="{ row }">
-          <el-button link type="primary" class="action-btn" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" class="action-btn" @click="handleDelete(row)">删除</el-button>
+          <el-button text class="action-btn action-btn--edit" @click="openEdit(row)">编辑</el-button>
+          <el-button text class="action-btn action-btn--delete" @click="handleDelete(row)">删除</el-button>
         </template>
       </HifyTable>
     </div>
@@ -318,9 +322,37 @@ async function handleDelete(row: Provider): Promise<void> {
 </template>
 
 <style scoped>
-/* 操作列的两个按钮：Element 相邻按钮默认只留 12px，这里再加 8px */
+/*
+ * 操作列的两个按钮。
+ *
+ * text 类型按钮默认左右各带 16px 内边距，两个挨在一起内容会比列宽还宽、
+ * 被 show-overflow-tooltip 截成省略号 —— 这里把内边距去掉，间距全交给
+ * margin 控制（Element 相邻按钮默认 12px，再加 8px = 20px）。
+ */
+.action-btn {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .action-btn + .action-btn {
   margin-left: 20px;
+}
+
+/* text 类型没有自己的颜色，这里显式给：编辑蓝、删除红 */
+.action-btn.action-btn--edit {
+  color: var(--color-primary-600);
+}
+
+.action-btn.action-btn--edit:hover {
+  color: var(--color-primary-700);
+}
+
+.action-btn.action-btn--delete {
+  color: var(--color-danger-500);
+}
+
+.action-btn.action-btn--delete:hover {
+  color: var(--color-danger-600);
 }
 
 /* API Key 的显示 / 隐藏切换 */

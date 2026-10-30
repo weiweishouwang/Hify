@@ -205,9 +205,11 @@ defineExpose({ refresh, rows, total, loading, page, size })
   width: 100%;
 }
 
-/* 分页靠右，与内容区右边缘对齐 */
+/* 分页靠右，与内容区右边缘对齐；上方一条细线把翻页区与表身分开 */
 .hify-table__pager {
   display: flex;
   justify-content: flex-end;
+  padding-top: var(--hify-space-4);
+  border-top: 1px solid var(--color-border-subtle);
 }
 </style>
