@@ -126,11 +126,14 @@ com.hify.<module>/
 | `json` | `JsonUtils`（包装容器自动配置的 ObjectMapper） |
 | `mybatis` | `BaseDO`、`AuditMetaObjectHandler` |
 | `redis` | `DistributedLock`、`IdempotentGuard`、`RateLimiter` |
+| `concurrent` | `NamedThreadFactory`（线程名带业务前缀，未捕获异常会记录而不是静默消失） |
+| `config` | `ThreadPoolConfig`——`llmExecutor`（LLM/MCP 慢调用）与 `asyncExecutor`（日志异步写入等非关键任务） |
 
 三个容易踩的约定：
 - **`BaseDO` 不含 `deletedAt`**——`@TableLogic` 会给每条 SQL 追加 `deleted_at IS NULL`，破坏分区表的分区裁剪。**事件流表也不继承 `BaseDO`**（分区表唯一键必须含分区列）
 - **新增任何 `isXxx()` 方法前先想 Jackson**——它会被当作布尔属性序列化进响应体（`Result.isOk()` 与 `CurrentUser.isApiKey()` 都踩过）
 - **`JsonUtils` 不要自己 `new ObjectMapper`**——第二个 mapper 会与容器里那个行为分叉（如漏注册 `JavaTimeModule`）
+- **线程池按用途分开，且都注册在 `shared.config`（不是 `internal.config`）**——`internal` 包禁止跨模块 import，而线程池要被 `ai`/`tool`/`mcp` 等模块注入。**注册了 `Executor` 类型的 bean 后，Spring Boot 的 `applicationTaskExecutor` 就不再创建**（`@ConditionalOnMissingBean(Executor.class)`），所以用 `@Async` 必须显式指定执行器名
 
 ### 2.3 部署拓扑
 
