@@ -32,22 +32,23 @@ const roleLabel = computed(() => roleLabels[props.message.role] ?? props.message
 <style scoped>
 .bubble {
   max-width: 760px;
-  margin: 0 auto 16px;
-  padding: 12px 16px;
-  border-radius: 10px;
+  margin: 0 auto var(--hify-space-4);
+  padding: var(--hify-space-3) var(--hify-space-4);
+  border-radius: var(--hify-radius-lg);
   border: 1px solid var(--hify-border);
-  background: var(--hify-surface);
+  background: var(--hify-bg-surface);
 }
 
+/* 用户气泡用主色的极浅一档，和助手气泡拉开层次 */
 .bubble--user {
-  background: #ecf5ff;
-  border-color: #d9ecff;
+  background: var(--hify-primary-50);
+  border-color: var(--hify-primary-100);
 }
 
 .bubble__role {
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: var(--hify-text-muted);
+  margin-bottom: var(--hify-space-1);
+  font-size: var(--hify-text-xs);
+  color: var(--hify-text-secondary);
 }
 
 .bubble__content {
@@ -57,7 +58,7 @@ const roleLabel = computed(() => roleLabels[props.message.role] ?? props.message
 }
 
 .bubble__cursor {
-  margin-top: 4px;
-  color: var(--hify-text-muted);
+  margin-top: var(--hify-space-1);
+  color: var(--hify-text-secondary);
 }
 </style>

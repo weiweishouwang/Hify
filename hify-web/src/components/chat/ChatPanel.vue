@@ -148,15 +148,15 @@ onBeforeUnmount(() => {
 }
 
 .chat__composer {
-  padding: 12px 16px;
-  background: var(--hify-surface);
+  padding: var(--hify-space-3) var(--hify-space-4);
+  background: var(--hify-bg-surface);
   border: 1px solid var(--hify-border);
-  border-radius: 10px;
+  border-radius: var(--hify-radius-lg);
 }
 
 .chat__actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  margin-top: var(--hify-space-2);
 }
 </style>

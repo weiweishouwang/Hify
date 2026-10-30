@@ -6,6 +6,9 @@ import 'element-plus/dist/index.css'
 
 import App from './App.vue'
 import router from './router'
+// 设计系统必须排在 element-plus 的样式之后：它要把 --el-* 映射到 --hify-*，
+// 同优先级下后加载的赢
+import './styles/tokens.css'
 import './styles/index.css'
 
 const app = createApp(App)

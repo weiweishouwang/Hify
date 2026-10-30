@@ -38,32 +38,32 @@ const statusText = computed(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 6px 0;
-  padding: 8px 12px;
-  font-size: 13px;
-  background: #f7f8fa;
+  gap: var(--hify-space-2);
+  margin: var(--hify-space-2) 0;
+  padding: var(--hify-space-2) var(--hify-space-3);
+  font-size: var(--hify-text-sm);
+  background: var(--hify-bg-subtle);
   border: 1px solid var(--hify-border);
-  border-radius: 6px;
+  border-radius: var(--hify-radius-md);
 }
 
 .tool-call__name {
-  font-weight: 500;
+  font-weight: var(--hify-weight-medium);
 }
 
 .tool-call__status {
-  color: var(--hify-text-muted);
+  color: var(--hify-text-secondary);
 }
 
 .tool-call__result {
   flex-basis: 100%;
-  margin: 4px 0 0;
-  padding: 8px;
+  margin: var(--hify-space-1) 0 0;
+  padding: var(--hify-space-2);
   max-height: 200px;
   overflow: auto;
-  font-size: 12px;
-  background: var(--hify-surface);
-  border-radius: 4px;
+  font-size: var(--hify-text-xs);
+  background: var(--hify-bg-surface);
+  border-radius: var(--hify-radius-sm);
   white-space: pre-wrap;
   word-break: break-all;
 }

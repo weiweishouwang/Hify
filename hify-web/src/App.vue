@@ -32,8 +32,11 @@ function onCommand(command: string): void {
 <template>
   <el-container class="app">
     <!-- ── 左侧菜单栏 ─────────────────────────────────────────── -->
-    <el-aside v-if="showChrome" width="200px" class="app__aside">
-      <div class="app__brand">Hify</div>
+    <el-aside v-if="showChrome" width="var(--hify-sidebar-width)" class="app__aside">
+      <div class="app__brand">
+        <span class="app__brand-mark" />
+        <span>Hify</span>
+      </div>
       <el-menu :default-active="route.path" router class="app__menu">
         <el-menu-item v-for="item in menus" :key="item.path" :index="item.path">
           <el-icon><component :is="item.icon" /></el-icon>
@@ -72,38 +75,93 @@ function onCommand(command: string): void {
   height: 100%;
 }
 
+/* ── 侧边栏：整个界面唯一的深色表面，视觉锚点在这 ───────────── */
 .app__aside {
-  background: var(--hify-surface);
-  border-right: 1px solid var(--hify-border);
+  background: var(--hify-bg-inverse);
+  border-right: 1px solid var(--hify-border-inverse);
   display: flex;
   flex-direction: column;
 }
 
 .app__brand {
-  height: 56px;
+  height: var(--hify-header-height);
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  font-size: 18px;
-  font-weight: 600;
+  gap: 10px;
+  padding: 0 var(--hify-space-4);
+  font-size: var(--hify-text-lg);
+  font-weight: var(--hify-weight-semibold);
+  color: var(--hify-text-inverse);
+  letter-spacing: var(--hify-tracking-tight);
+}
+
+/* 品牌标记：整个界面"重"的一处，用主色渐变 + 辉光 */
+.app__brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--hify-radius-sm);
+  background: linear-gradient(135deg, var(--hify-primary-400), var(--hify-primary-600));
+  box-shadow: var(--hify-glow-primary);
 }
 
 .app__menu {
   border-right: none;
+  background: transparent;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--hify-text-inverse-secondary);
+  --el-menu-hover-bg-color: var(--hify-bg-inverse-hover);
+  --el-menu-active-color: #ffffff;
+  --el-menu-item-height: 38px;
+  --el-menu-base-level-padding: 12px;
+  --el-menu-item-font-size: var(--hify-text-sm);
 }
 
+.app__menu :deep(.el-menu-item) {
+  height: 38px;
+  line-height: 38px;
+  margin: 2px 10px;
+  border-radius: var(--hify-radius-sm);
+  transition: var(--hify-transition-color);
+}
+
+.app__menu :deep(.el-menu-item:hover) {
+  background: var(--hify-bg-inverse-hover);
+  color: var(--hify-text-inverse);
+}
+
+/* 选中项：深底 + 主色竖条，是侧边栏里唯一的亮色 */
+.app__menu :deep(.el-menu-item.is-active) {
+  background: var(--hify-bg-inverse-active);
+  color: #ffffff;
+  font-weight: var(--hify-weight-medium);
+}
+
+.app__menu :deep(.el-menu-item.is-active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 0 var(--hify-radius-xs) var(--hify-radius-xs) 0;
+  background: var(--hify-primary-400);
+}
+
+/* ── 顶栏 ──────────────────────────────────────────────────── */
 .app__header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 20px;
-  background: var(--hify-surface);
+  gap: var(--hify-space-3);
+  padding: 0 var(--hify-space-5);
+  background: var(--hify-bg-surface);
   border-bottom: 1px solid var(--hify-border);
 }
 
 .app__title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--hify-text-sm);
+  font-weight: var(--hify-weight-semibold);
+  color: var(--hify-text-primary);
 }
 
 .app__spacer {
@@ -115,14 +173,14 @@ function onCommand(command: string): void {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  color: var(--hify-text-muted);
+  color: var(--hify-text-secondary);
   outline: none;
 }
 
 .app__main {
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: var(--hify-content-padding);
   overflow: auto;
 }
 

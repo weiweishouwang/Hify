@@ -1,10 +1,8 @@
-:root {
-  --hify-bg: #f4f6f9;
-  --hify-surface: #ffffff;
-  --hify-border: #e4e7ed;
-  --hify-text: #1f2329;
-  --hify-text-muted: #646a73;
-}
+/**
+ * 基础样式：重置 + 排版 + 少量通用类。
+ *
+ * 颜色、圆角、阴影一律引用 tokens.css 里的变量，这里不写死值。
+ */
 
 * {
   box-sizing: border-box;
@@ -18,21 +16,110 @@ body,
 }
 
 body {
-  font-family: system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  color: var(--hify-text);
-  background: var(--hify-bg);
+  font-family: var(--hify-font-sans);
+  font-size: var(--hify-text-base);
+  line-height: var(--hify-leading-normal);
+  color: var(--hify-text-primary);
+  background: var(--hify-bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题：字重到 600 就够，再重在中文里会发糊 */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: var(--hify-weight-semibold);
+  line-height: var(--hify-leading-tight);
+  color: var(--hify-text-primary);
+}
+
+h1 {
+  font-size: var(--hify-text-2xl);
+}
+
+h2 {
+  font-size: var(--hify-text-xl);
+}
+
+h3 {
+  font-size: var(--hify-text-lg);
+}
+
+p {
+  margin: 0;
+}
+
+/* 机器可读的值：模型名、API Key、ID、指标 —— 等宽是语义不是装饰 */
+code,
+kbd,
+.mono {
+  font-family: var(--hify-font-mono);
+  font-size: 0.92em;
 }
 
 code {
   padding: 1px 5px;
-  font-size: 13px;
-  background: #f2f3f5;
-  border-radius: 4px;
+  background: var(--hify-bg-muted);
+  border-radius: var(--hify-radius-xs);
+}
+
+/* 键盘焦点统一走主色焦点环，别让浏览器默认的描边到处乱跑 */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--hify-ring);
+  border-radius: var(--hify-radius-sm);
 }
 
 /* 页面标题：占位页与正式页面共用 */
 .page-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--hify-text);
+  font-size: var(--hify-text-lg);
+  font-weight: var(--hify-weight-semibold);
+  color: var(--hify-text-primary);
+}
+
+/* 区块说明：一行灰字，讲清这块是干什么的 */
+.page-subtitle {
+  font-size: var(--hify-text-sm);
+  color: var(--hify-text-secondary);
+}
+
+/* 表格里的次要信息列 */
+.text-muted {
+  color: var(--hify-text-secondary);
+}
+
+/* 状态点：健康用薄荷绿，进行中用主色，异常用 danger */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--hify-radius-full);
+  vertical-align: middle;
+}
+
+.status-dot--healthy {
+  background: var(--hify-secondary-500);
+}
+
+.status-dot--live {
+  background: var(--hify-primary-500);
+}
+
+.status-dot--down {
+  background: var(--hify-danger-500);
+}
+
+/* 尊重系统的"减少动效"设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

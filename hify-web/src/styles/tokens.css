@@ -1,0 +1,373 @@
+/**
+ * Hify 设计系统 —— 全部以 CSS 变量形式输出。
+ *
+ * 视觉方向：浅底 + 科技感点缀。
+ * - 浅色画布撑住管理后台大量的表格与表单，长时间看不累
+ * - 深色侧边栏 + 亮色主色按钮，是整个界面唯一"重"的地方，视觉锚点在这
+ * - 主色蓝紫（科技感），辅色薄荷绿（状态与数据指示）
+ * - 参考 Linear / Supabase：干净但不无聊，有设计感但不花哨
+ *
+ * 使用约定：
+ * - 业务代码只引用 `--hify-*`，不直接写死颜色
+ * - Element Plus 的 `--el-*` 在文件末尾统一映射，改这里就能整体换肤
+ * - 圆角按元素大小分级，不搞"万物同一个圆角"
+ * - 阴影带冷色调（rgba(20,24,40,…)），不用纯黑灰，避免发脏
+ */
+
+:root {
+  /* ═══════════════════════════════════════════════════════════════
+   * 一、主色 —— 蓝紫（electric indigo-violet，色相约 245°）
+   * 按钮、链接、选中态、焦点环、侧边栏高亮
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-primary-50: #f4f3fe;
+  --hify-primary-100: #e9e7fd;
+  --hify-primary-200: #d3cffa;
+  --hify-primary-300: #b0a9f5;
+  --hify-primary-400: #8b82ef;
+  --hify-primary-500: #6558e8;
+  --hify-primary-600: #5346c9;
+  --hify-primary-700: #413795;
+  --hify-primary-800: #332b6e;
+  --hify-primary-900: #262252;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 二、辅色 —— 薄荷绿（色相约 163°）
+   * 只用于"状态与数据"：健康、在线、成功、就绪、进行中的流
+   * 不拿来当按钮色 —— 绿色的按钮在管理后台里读起来像"确认操作"
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-secondary-50: #eafbf4;
+  --hify-secondary-100: #cdf6e9;
+  --hify-secondary-200: #a9ebd3;
+  --hify-secondary-300: #79dcbc;
+  --hify-secondary-400: #4fcda9;
+  --hify-secondary-500: #21b98d;
+  --hify-secondary-600: #179a75;
+  --hify-secondary-700: #137b60;
+  --hify-secondary-800: #10624d;
+  --hify-secondary-900: #0c4b3c;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 三、状态色
+   * danger / warning / info 各留必要档位；info 用青蓝，与薄荷绿区分开
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-danger-50: #fef1f1;
+  --hify-danger-100: #fde1e1;
+  --hify-danger-300: #f5a6a6;
+  --hify-danger-500: #e04a4f;
+  --hify-danger-600: #c53a3f;
+  --hify-danger-700: #a12c31;
+
+  --hify-warning-50: #fdf5e7;
+  --hify-warning-100: #fbe9c4;
+  --hify-warning-300: #f2c167;
+  --hify-warning-500: #d97706;
+  --hify-warning-600: #b45f05;
+  --hify-warning-700: #8f4a04;
+
+  --hify-info-50: #e8f8fc;
+  --hify-info-100: #c9eff7;
+  --hify-info-300: #58cbe0;
+  --hify-info-500: #0f97b4;
+  --hify-info-600: #0c7c95;
+  --hify-info-700: #0a6377;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 四、中性色 —— 冷灰，带一点紫调的倾向，好让主色落下来不打架
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-neutral-0: #ffffff;
+  --hify-neutral-25: #fbfbfd;
+  --hify-neutral-50: #f6f7fa;
+  --hify-neutral-100: #eef0f6;
+  --hify-neutral-200: #e4e7ef;
+  --hify-neutral-300: #cfd4e0;
+  --hify-neutral-400: #a9b0c0;
+  --hify-neutral-500: #828a9c;
+  --hify-neutral-600: #5f6779;
+  --hify-neutral-700: #3f4658;
+  --hify-neutral-800: #282d3b;
+  --hify-neutral-900: #1a1d28;
+  --hify-neutral-950: #111420;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 五、背景色阶
+   * canvas → subtle → surface → overlay 是一条"浮起来"的梯度
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-bg-canvas: var(--hify-neutral-50);
+  --hify-bg-subtle: var(--hify-neutral-25);
+  --hify-bg-surface: var(--hify-neutral-0);
+  --hify-bg-overlay: var(--hify-neutral-0);
+  --hify-bg-muted: var(--hify-neutral-100);
+  --hify-bg-hover: #f0f2f7;
+  --hify-bg-selected: var(--hify-primary-50);
+
+  /* 深色表面（侧边栏）—— 不用纯黑，深靛比 #111 有品牌感 */
+  --hify-bg-inverse: #161927;
+  --hify-bg-inverse-hover: #1e2233;
+  --hify-bg-inverse-active: #262b40;
+  --hify-border-inverse: #272c40;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 六、文字色阶 —— 从最强到最弱，五档够用，不要更多
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-text-primary: var(--hify-neutral-900);
+  --hify-text-secondary: var(--hify-neutral-600);
+  --hify-text-tertiary: var(--hify-neutral-500);
+  --hify-text-disabled: #b6bcc9;
+  --hify-text-placeholder: #aeb5c4;
+  --hify-text-link: var(--hify-primary-600);
+
+  /* 深色表面上的文字 */
+  --hify-text-inverse: #edeff7;
+  --hify-text-inverse-secondary: #98a0b8;
+  --hify-text-inverse-tertiary: #6c748e;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 七、描边
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-border: var(--hify-neutral-200);
+  --hify-border-subtle: #edeff4;
+  --hify-border-strong: var(--hify-neutral-300);
+  --hify-border-inverse-subtle: #1f2436;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 八、圆角 —— 按元素大小分级
+   * 标签 3 → 控件 4/6 → 卡片 10 → 弹层 14 → 大面板 20
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-radius-xs: 3px;
+  --hify-radius-sm: 4px;
+  --hify-radius-md: 6px;
+  --hify-radius-lg: 10px;
+  --hify-radius-xl: 14px;
+  --hify-radius-2xl: 20px;
+  --hify-radius-full: 999px;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 九、阴影 —— 带冷色调，不用纯黑灰
+   * 层级：xs 静态浮起 → sm 卡片 → md 弹层 → lg 模态 → xl 抽屉
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-shadow-xs: 0 1px 2px rgba(20, 24, 40, 0.06);
+  --hify-shadow-sm: 0 1px 3px rgba(20, 24, 40, 0.08), 0 1px 2px rgba(20, 24, 40, 0.04);
+  --hify-shadow-md: 0 6px 16px rgba(20, 24, 40, 0.1), 0 2px 4px rgba(20, 24, 40, 0.05);
+  --hify-shadow-lg: 0 16px 40px rgba(20, 24, 40, 0.14), 0 4px 10px rgba(20, 24, 40, 0.06);
+  --hify-shadow-xl: 0 28px 64px rgba(20, 24, 40, 0.18);
+  --hify-shadow-inset: inset 0 1px 2px rgba(20, 24, 40, 0.05);
+
+  /* 主色辉光 —— 只给主按钮和焦点环用，是整个界面的"科技感"落点 */
+  --hify-glow-primary: 0 4px 14px rgba(101, 88, 232, 0.3);
+  --hify-glow-secondary: 0 4px 14px rgba(33, 185, 141, 0.28);
+  --hify-ring: 0 0 0 3px rgba(101, 88, 232, 0.22);
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 十、动效
+   * 缓动用 cubic-bezier(0.32, 0.72, 0, 1) —— 起步快、收尾稳，
+   * 跟 Linear 的手感接近，比默认 ease 更利落
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-duration-instant: 80ms;
+  --hify-duration-fast: 120ms;
+  --hify-duration-base: 180ms;
+  --hify-duration-slow: 280ms;
+  --hify-duration-slower: 420ms;
+
+  --hify-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --hify-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --hify-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --hify-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --hify-transition-color:
+    color var(--hify-duration-fast) var(--hify-ease-standard),
+    background-color var(--hify-duration-fast) var(--hify-ease-standard),
+    border-color var(--hify-duration-fast) var(--hify-ease-standard);
+  --hify-transition-transform: transform var(--hify-duration-base) var(--hify-ease-standard);
+  --hify-transition-shadow: box-shadow var(--hify-duration-base) var(--hify-ease-standard);
+  --hify-transition-opacity: opacity var(--hify-duration-base) var(--hify-ease-standard);
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 十一、字体
+   * 正文用系统字体栈（中文落到苹方 / 思源），数字与标识类内容用等宽
+   * 等宽不是装饰：模型名、API Key、ID、指标 —— 这些是机器可读的值
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-font-sans:
+    system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    sans-serif;
+  --hify-font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, 'JetBrains Mono', 'Roboto Mono', Consolas,
+    'Liberation Mono', monospace;
+
+  --hify-text-xs: 12px;
+  --hify-text-sm: 13px;
+  --hify-text-base: 14px;
+  --hify-text-lg: 16px;
+  --hify-text-xl: 18px;
+  --hify-text-2xl: 22px;
+  --hify-text-3xl: 28px;
+
+  --hify-leading-tight: 1.3;
+  --hify-leading-snug: 1.45;
+  --hify-leading-normal: 1.6;
+
+  --hify-weight-regular: 400;
+  --hify-weight-medium: 500;
+  --hify-weight-semibold: 600;
+  --hify-weight-bold: 700;
+
+  /* 中文正文不做字距调整，只给大号西文标题用 */
+  --hify-tracking-normal: 0;
+  --hify-tracking-tight: -0.011em;
+
+  /* ═══════════════════════════════════════════════════════════════
+   * 十二、间距与布局
+   * ═══════════════════════════════════════════════════════════════ */
+  --hify-space-1: 4px;
+  --hify-space-2: 8px;
+  --hify-space-3: 12px;
+  --hify-space-4: 16px;
+  --hify-space-5: 20px;
+  --hify-space-6: 24px;
+  --hify-space-8: 32px;
+  --hify-space-10: 40px;
+  --hify-space-12: 48px;
+
+  --hify-sidebar-width: 208px;
+  --hify-sidebar-width-collapsed: 60px;
+  --hify-header-height: 52px;
+  --hify-content-padding: var(--hify-space-5);
+
+  --hify-z-sticky: 1020;
+  --hify-z-dropdown: 2000;
+  --hify-z-modal: 2100;
+  --hify-z-toast: 3000;
+}
+
+/* ═════════════════════════════════════════════════════════════════
+ * 十三、映射到 Element Plus
+ *
+ * 这一段是这套 token 能不能落地的关键：不映射的话，Element Plus 的
+ * 按钮、表格、菜单会继续用它自己那套蓝色，界面就是"两套颜色拼起来"。
+ * 放在 tokens.css 且在 element-plus/dist/index.css 之后引入即可覆盖。
+ * ═════════════════════════════════════════════════════════════════ */
+:root {
+  /* 主色 */
+  --el-color-primary: var(--hify-primary-500);
+  --el-color-primary-light-3: var(--hify-primary-400);
+  --el-color-primary-light-5: var(--hify-primary-300);
+  --el-color-primary-light-7: var(--hify-primary-200);
+  --el-color-primary-light-8: var(--hify-primary-100);
+  --el-color-primary-light-9: var(--hify-primary-50);
+  --el-color-primary-dark-2: var(--hify-primary-600);
+
+  /* 语义色 */
+  --el-color-success: var(--hify-secondary-500);
+  --el-color-success-light-3: var(--hify-secondary-400);
+  --el-color-success-light-5: var(--hify-secondary-300);
+  --el-color-success-light-7: var(--hify-secondary-200);
+  --el-color-success-light-8: var(--hify-secondary-100);
+  --el-color-success-light-9: var(--hify-secondary-50);
+  --el-color-success-dark-2: var(--hify-secondary-600);
+
+  --el-color-warning: var(--hify-warning-500);
+  --el-color-warning-light-3: var(--hify-warning-300);
+  --el-color-warning-light-5: var(--hify-warning-100);
+  --el-color-warning-light-7: var(--hify-warning-50);
+  --el-color-warning-light-8: var(--hify-warning-50);
+  --el-color-warning-light-9: var(--hify-warning-50);
+  --el-color-warning-dark-2: var(--hify-warning-600);
+
+  --el-color-danger: var(--hify-danger-500);
+  --el-color-danger-light-3: var(--hify-danger-300);
+  --el-color-danger-light-5: var(--hify-danger-100);
+  --el-color-danger-light-7: var(--hify-danger-50);
+  --el-color-danger-light-8: var(--hify-danger-50);
+  --el-color-danger-light-9: var(--hify-danger-50);
+  --el-color-danger-dark-2: var(--hify-danger-600);
+
+  --el-color-error: var(--hify-danger-500);
+  --el-color-error-light-3: var(--hify-danger-300);
+  --el-color-error-light-5: var(--hify-danger-100);
+  --el-color-error-light-7: var(--hify-danger-50);
+  --el-color-error-light-8: var(--hify-danger-50);
+  --el-color-error-light-9: var(--hify-danger-50);
+  --el-color-error-dark-2: var(--hify-danger-600);
+
+  --el-color-info: var(--hify-neutral-500);
+  --el-color-info-light-3: var(--hify-neutral-400);
+  --el-color-info-light-5: var(--hify-neutral-300);
+  --el-color-info-light-7: var(--hify-neutral-200);
+  --el-color-info-light-8: var(--hify-neutral-100);
+  --el-color-info-light-9: var(--hify-neutral-50);
+  --el-color-info-dark-2: var(--hify-neutral-600);
+
+  /* 背景 */
+  --el-bg-color: var(--hify-bg-surface);
+  --el-bg-color-page: var(--hify-bg-canvas);
+  --el-bg-color-overlay: var(--hify-bg-overlay);
+
+  /* 文字 */
+  --el-text-color-primary: var(--hify-text-primary);
+  --el-text-color-regular: var(--hify-neutral-700);
+  --el-text-color-secondary: var(--hify-text-secondary);
+  --el-text-color-placeholder: var(--hify-text-placeholder);
+  --el-text-color-disabled: var(--hify-text-disabled);
+
+  /* 描边 */
+  --el-border-color: var(--hify-border);
+  --el-border-color-light: var(--hify-border-subtle);
+  --el-border-color-lighter: #f2f4f8;
+  --el-border-color-extra-light: #f7f8fb;
+  --el-border-color-dark: var(--hify-border-strong);
+  --el-border-color-darker: #b9c0cf;
+  --el-border-color-hover: var(--hify-border-strong);
+
+  /* 填充（表格斑马纹、禁用态、输入框 hover） */
+  --el-fill-color: var(--hify-neutral-100);
+  --el-fill-color-light: var(--hify-bg-hover);
+  --el-fill-color-lighter: var(--hify-bg-subtle);
+  --el-fill-color-extra-light: #fafbfd;
+  --el-fill-color-dark: var(--hify-neutral-200);
+  --el-fill-color-darker: var(--hify-neutral-300);
+  --el-fill-color-blank: var(--hify-bg-surface);
+
+  --el-disabled-bg-color: var(--hify-bg-muted);
+  --el-disabled-text-color: var(--hify-text-disabled);
+  --el-disabled-border-color: var(--hify-border);
+
+  /* 圆角 */
+  --el-border-radius-base: var(--hify-radius-md);
+  --el-border-radius-small: var(--hify-radius-sm);
+  --el-border-radius-round: var(--hify-radius-full);
+  --el-border-radius-circle: var(--hify-radius-full);
+
+  /* 阴影 */
+  --el-box-shadow: var(--hify-shadow-md);
+  --el-box-shadow-light: var(--hify-shadow-sm);
+  --el-box-shadow-lighter: var(--hify-shadow-xs);
+  --el-box-shadow-dark: var(--hify-shadow-lg);
+
+  /* 字体 */
+  --el-font-family: var(--hify-font-sans);
+  --el-font-size-extra-small: var(--hify-text-xs);
+  --el-font-size-small: var(--hify-text-sm);
+  --el-font-size-base: var(--hify-text-base);
+  --el-font-size-medium: var(--hify-text-base);
+  --el-font-size-large: var(--hify-text-lg);
+  --el-font-size-extra-large: var(--hify-text-xl);
+
+  /* 动效 */
+  --el-transition-duration: var(--hify-duration-base);
+  --el-transition-duration-fast: var(--hify-duration-fast);
+  --el-transition-function-ease-in-out-bezier: var(--hify-ease-standard);
+  --el-transition-function-fast-bezier: var(--hify-ease-standard);
+  --el-transition-color: var(--hify-transition-color);
+  --el-transition-box-shadow: var(--hify-transition-shadow);
+
+  /* 遮罩用冷色，不用纯黑 */
+  --el-mask-color: rgba(20, 24, 40, 0.5);
+
+  /* 表格：表头淡一点，行 hover 用极浅的主色 */
+  --el-table-border-color: var(--hify-border);
+  --el-table-header-bg-color: var(--hify-bg-subtle);
+  --el-table-header-text-color: var(--hify-text-secondary);
+  --el-table-tr-bg-color: var(--hify-bg-surface);
+  --el-table-row-hover-bg-color: var(--hify-primary-50);
+  --el-table-bg-color: var(--hify-bg-surface);
+  --el-table-text-color: var(--hify-neutral-700);
+}

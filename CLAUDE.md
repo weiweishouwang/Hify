@@ -250,7 +250,7 @@ hify-web/
     ├── router/        路由表 + 登录守卫
     ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
     ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts（令牌存取）、id.ts
-    └── styles/        全局样式与 CSS 变量
+    └── styles/        tokens.css（设计系统：全部 CSS 变量 + Element Plus 映射）、index.css（重置与排版）
 ```
 
 - **`App.vue` 就是布局**：左侧 `el-menu` 菜单栏 + 右侧内容区 `router-view`。因此**路由表全是顶层路由，不套一层带 `children` 的布局路由** —— 套了会出现「App.vue 渲染 App.vue」的递归
@@ -264,6 +264,14 @@ hify-web/
 - **令牌存放在 `utils/token.ts`** —— utils 层不 import Pinia（否则 utils/api ↔ stores 循环依赖），路由守卫只看「有没有令牌」
 - 静态资源由 nginx 托管并带 hash 长缓存；浏览器侧始终同源（`/api` 与 `/` 都走 Ingress）
 - **认证方案还没定**（见 §五）：登录页按「用户名 + 密码换令牌」实现，将来若选 OIDC 只换登录页，令牌存取与守卫不用动
+
+**视觉风格：浅底 + 科技感点缀**
+
+- **浅色画布撑住管理后台的大量表格与表单**，长时间看不累；**深色侧边栏 + 亮色主色按钮是整个界面唯一的"重"处**，视觉锚点在这
+- **主色蓝紫（`--hify-primary-*`，色相约 245°）**：按钮、链接、选中态、焦点环
+- **辅色薄荷绿（`--hify-secondary-*`）只用于状态与数据**（健康、在线、进行中的流）——**不拿绿色当按钮色**，绿色的按钮在管理后台里读起来像"确认操作"
+- **深色表面用深靛（`--hify-bg-inverse: #161927`）不用纯黑**，带一点品牌色倾向
+- **阴影带冷色调**（`rgba(20,24,40,…)`），不用纯黑灰，避免发脏
 
 ### 2.6 构建
 
@@ -485,6 +493,11 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **组件一律 `<script setup lang="ts">` + Composition API**；组件名与文件名都用 PascalCase；props 用 `defineProps<{...}>()` 声明类型
 - **禁止 `any`** —— `strict` 开着；确实需要逃生舱时必须在同一行注释写清理由
 - **网络层错误要给用户看得懂的文案** —— 后端返回的业务 message 已做过脱敏，可直接展示；「没有响应」这类网络错误要自己转成人话（「后端服务暂时不可用」），不要把 `AxiosError` 原文弹出来
+- **颜色、圆角、阴影、间距一律走 `src/styles/tokens.css` 的 `--hify-*` 变量**，组件里不写死色值与像素值 —— 要改主题只改 tokens.css 一个文件
+- **`tokens.css` 必须在 `element-plus/dist/index.css` 之后引入** —— 它把 Element Plus 的 `--el-*` 映射到 `--hify-*`，不映射的话按钮、表格、菜单还是它自己那套蓝，界面会变成"两套颜色拼起来"
+- **圆角按元素大小分级**（`--hify-radius-xs` 3px → `2xl` 20px），不要万物同一个圆角 —— 标签 3、控件 4/6、卡片 10、弹层 14
+- **等宽字体留给机器可读的值**（模型名、API Key、ID、指标）—— 是语义不是装饰；正文用系统字体栈，中文落到苹方 / 思源
+- **动效统一走 `--hify-duration-*` + `--hify-ease-*`**，并尊重 `prefers-reduced-motion`
 
 ---
 

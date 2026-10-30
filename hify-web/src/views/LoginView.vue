@@ -100,8 +100,8 @@ function enterAsDev(): void {
 }
 
 .login__title {
-  margin: 0 0 20px;
-  font-size: 20px;
+  margin: 0 0 var(--hify-space-5);
+  font-size: var(--hify-text-xl);
 }
 
 .login__submit {
@@ -109,9 +109,9 @@ function enterAsDev(): void {
 }
 
 .login__note {
-  margin: 12px 0 0;
-  font-size: 12px;
+  margin: var(--hify-space-3) 0 0;
+  font-size: var(--hify-text-xs);
   line-height: 1.7;
-  color: var(--hify-text-muted);
+  color: var(--hify-text-secondary);
 }
 </style>

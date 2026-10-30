@@ -28,15 +28,15 @@ defineProps<{
 }
 
 .pending__title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--hify-text-lg);
+  font-weight: var(--hify-weight-semibold);
 }
 
 .pending__hint {
   max-width: 520px;
   margin: 0 auto;
-  color: var(--hify-text-muted);
-  font-size: 13px;
+  color: var(--hify-text-secondary);
+  font-size: var(--hify-text-sm);
   line-height: 1.7;
 }
 </style>
