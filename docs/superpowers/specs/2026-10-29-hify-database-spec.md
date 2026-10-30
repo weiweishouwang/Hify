@@ -119,13 +119,19 @@ ALTER TABLE `ai_agent`
   ADD INDEX `idx_knowledge_ids` ((CAST(`knowledge_ids`->'$[*]' AS CHAR(64) ARRAY)));
 ```
 
-对应查询（可命中多值索引）：
+对应查询（**可命中多值索引**）：
 
 ```sql
-SELECT * FROM `ai_agent` WHERE `tool_ids`->'$[*]' MEMBER OF (JSON_QUOTE('tool_xxx'));
--- 或
-SELECT * FROM `ai_agent` WHERE JSON_CONTAINS(`tool_ids`, JSON_QUOTE('tool_xxx'));
+-- ✅ 值在左、JSON 数组在右 —— 走 idx_tool_ids
+SELECT * FROM `ai_agent` WHERE 'tool_xxx' MEMBER OF (`tool_ids`->'$[*]');
 ```
+
+> ⚠️ **操作数顺序不能反**。实测 MySQL 8.4.13：
+> - `WHERE `tool_ids`->'$[*]' MEMBER OF (JSON_QUOTE('tool_xxx'))` → **全表扫**，索引完全用不上
+> - `WHERE JSON_CONTAINS(`tool_ids`, JSON_QUOTE('tool_xxx'))` → 同样全表扫
+> - `WHERE 'tool_xxx' MEMBER OF (`tool_ids`->'$[*]')` → `type: ref`，命中多值索引
+>
+> 预编译参数（`?` 绑定）同样能命中：优化器在执行期把参数当常量。
 
 **注意**：多值索引要求被索引的 JSON 数组元素是标量。`tool_ids` 存的是 ID 字符串数组 ✅；若改成对象数组则无法建此索引。
 
