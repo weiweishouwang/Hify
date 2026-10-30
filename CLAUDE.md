@@ -512,7 +512,6 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **网络层错误要给用户看得懂的文案** —— 后端返回的业务 message 已做过脱敏，可直接展示；「没有响应」这类网络错误要自己转成人话（「后端服务暂时不可用」），不要把 `AxiosError` 原文弹出来
 - **颜色、圆角、阴影、间距一律走 `src/styles/tokens.css` 的变量**，组件里不写死色值与像素值 —— 要改主题只改 tokens.css 一个文件。**颜色用 `--color-*`（bg / text / border / primary / secondary / 状态色），尺寸与动效用 `--hify-*`（radius / shadow / duration / space / font-size …）** —— 字号叫 `--hify-font-size-*`，不叫 `--hify-text-*`（那是颜色）
 - **`tokens.css` 必须在 `element-plus/dist/index.css` 之后引入** —— 它把 Element Plus 的 `--el-*` 映射到 `--color-*`，不映射的话按钮、表格、菜单还是它自己那套蓝，界面会变成"两套颜色拼起来"
-- **Element 的组件级变量要挂在组件类名上，不能挂 `:root`** —— Element 把 `--el-table-*` 声明在 `.el-table` **元素自己身上**（`.el-table{--el-table-header-bg-color:…}`），元素自己的声明压过从 `:root` 继承下来的值，挂 `:root` 等于没写。改某个组件的外观，变量就挂到对应的类名上（`.el-table { --el-table-… }`）
 - **按钮分三档**：主要操作用 `type="primary"`（**蓝紫渐变 + 辉光**，整个界面唯一带渐变的按钮，一次只该有一个）；次要操作不写 `type`（白底 + 描边）；危险操作用 `type="danger"`（红）
 - **圆角按元素大小分级**（`--hify-radius-xs` 3px → `2xl` 20px），不要万物同一个圆角 —— 标签 3、控件 4/6、卡片 10、弹层 14
 - **等宽字体留给机器可读的值**（模型名、API Key、ID、指标）—— 是语义不是装饰；正文用系统字体栈，中文落到苹方 / 思源
