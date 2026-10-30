@@ -34,6 +34,12 @@
     <spring-boot.version>3.5.16</spring-boot.version>
     <mybatis-plus.version>3.5.18</mybatis-plus.version>
     <mcp-sdk.version>2.1.0</mcp-sdk.version>
+    <!--
+      OkHttp：shared 的 LlmHttpClient 用它发流式 SSE 请求。
+      Spring Boot 的 BOM 不管理 OkHttp（spring-boot-dependencies 里没有 okhttp-bom），
+      版本只能自己定 —— 选 4.12.0（最后一个 4.x 稳定版；5.x 仍是 alpha）。
+    -->
+    <okhttp.version>4.12.0</okhttp.version>
   </properties>
 
   <dependencyManagement>
@@ -113,6 +119,11 @@
         <artifactId>mcp</artifactId>
         <version>${mcp-sdk.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.squareup.okhttp3</groupId>
+        <artifactId>okhttp</artifactId>
+        <version>${okhttp.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -140,6 +151,17 @@
     <dependency>
       <groupId>io.projectreactor.netty</groupId>
       <artifactId>reactor-netty-http</artifactId>
+    </dependency>
+
+    <!--
+      OkHttp：shared 的 LlmHttpClient 用它发流式 SSE 请求。
+      SSE 帧解析自己写（SseFrameReader），不用 okhttp-sse —— 它的同步入口
+      EventSources.processResponse 在 4.12.0 上是坏的，异步入口又会把并发卡在
+      Dispatcher 的 maxRequestsPerHost（默认 5）上。
+    -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
     </dependency>
 
     <dependency>
@@ -202,6 +224,14 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- MockWebServer：起真的 http 服务测 LlmHttpClient 的超时、状态码分类与 SSE 分帧 -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>mockwebserver</artifactId>
+      <version>${okhttp.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

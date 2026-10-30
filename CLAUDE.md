@@ -120,7 +120,7 @@ com.hify.<module>/
 
 #### `hify-shared` 已落地的共享基础设施
 
-按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 140 个单元测试全绿。**
+按依赖顺序分五层实现，每层写完单测通过再做下一层。**共 159 个单元测试全绿。**
 
 | 包 | 内容 |
 |---|---|
@@ -132,9 +132,10 @@ com.hify.<module>/
 | `mybatis` | `BaseEntity`（业务实体基类：主键 + 审计字段 + 逻辑删除）、`AuditMetaObjectHandler`、`PageHelper`（分页参数与结果转换） |
 | `redis` | `DistributedLock`、`IdempotentGuard`、`RateLimiter` |
 | `concurrent` | `NamedThreadFactory`（线程名带业务前缀，未捕获异常会记录而不是静默消失） |
-| `config` | `ThreadPoolConfig`（`llmExecutor` / `asyncExecutor`）、`JacksonConfig`（时间统一 ISO 8601）、`CacheConfig`（Redis 缓存）、`MybatisPlusConfig`（分页拦截器） |
+| `http` | `LlmHttpClient`（调上游 LLM：普通请求走 RestTemplate，流式 SSE 走 OkHttp）、`LlmApiException` / `LlmErrorKind`（失败分类：TIMEOUT / AUTH_FAILED / RATE_LIMITED / UPSTREAM_ERROR）、`LlmStreamCallback` |
+| `config` | `ThreadPoolConfig`（`llmExecutor` / `asyncExecutor`）、`JacksonConfig`（时间统一 ISO 8601）、`CacheConfig`（Redis 缓存）、`MybatisPlusConfig`（分页拦截器）、`LlmHttpClientConfig`（客户端装配） |
 
-三个容易踩的约定：
+几个容易踩的约定：
 - **业务实体继承 `shared.mybatis.BaseEntity`**——它带 `id`（自增主键）、`createdAt` / `updatedAt` / `createdBy`（自动填充）、`deleted`（`@TableLogic`，0/1）。**事件流表不继承它**：分区表主键必须是 `(id, created_at)`，且 `@TableLogic` 会给每条 SQL 追加 `deleted = 0`，破坏分区裁剪
 - **`deleted` 用 0/1 标记而不是 `deleted_at` 时间戳**——后者在 `@TableLogic` 下与分区裁剪冲突，且多一张表就多一处要维护的软删语义
 - **新增任何 `isXxx()` 方法前先想 Jackson**——它会被当作布尔属性序列化进响应体（`Result.isOk()` 与 `CurrentUser.isApiKey()` 都踩过）
@@ -142,6 +143,9 @@ com.hify.<module>/
 - **时间对外一律 ISO 8601**（`LocalDateTime` → `2026-10-30T15:52:42`，`LocalDate` → `2026-10-30`），由 `shared.config.JacksonConfig` 统一配好；`application.yml` 里**不要再配 `spring.jackson.date-format`**——那个只管 `java.util.Date`，配了会跟 ISO 格式分叉
 - **缓存统一在 Redis，不用本地 Caffeine**（多副本会不一致）。TTL 在 `shared.config.CacheConfig` 里定死：默认 30 分钟，`session-cache` 2 小时，key 前缀 `hify:`
 - **线程池按用途分开，且都注册在 `shared.config`（不是 `internal.config`）**——`internal` 包禁止跨模块 import，而线程池要被 `ai`/`tool`/`mcp` 等模块注入。**注册了 `Executor` 类型的 bean 后，Spring Boot 的 `applicationTaskExecutor` 就不再创建**（`@ConditionalOnMissingBean(Executor.class)`），所以用 `@Async` 必须显式指定执行器名
+- **`shared.http.LlmHttpClient` 的两个方法都是阻塞的**——`post` 占住线程直到上游返回，`stream` 占住线程直到整条流结束。调用方要放在专用线程上跑，**不要占 Tomcat 工作线程**（§3.4）
+- **上游的错误响应体不进异常 message**——上游报错文本可能夹带用户输入，随异常回显到终端用户那里。只在服务端记 DEBUG 日志，异常里只留状态码
+- **SSE 帧自己解析（`shared.http.SseFrameReader`），不用 `okhttp-sse`**——4.12.0 的同步入口 `EventSources.processResponse` 是坏的（`RealEventSource.call` 是 lateinit 没赋值，一调就抛 `UninitializedPropertyAccessException`）；它剩下的异步入口会把并发卡在 OkHttp `Dispatcher` 的 `maxRequestsPerHost`（默认 5）上，同一个 provider 主机最多挂 5 条 SSE。**自己读响应体则全程留在调用方线程上，并发数不受 Dispatcher 限制**
 
 ### 2.3 部署拓扑
 
