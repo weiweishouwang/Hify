@@ -5,8 +5,21 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { ElMessage } from 'element-plus'
-import type { Result } from '@/types/api'
+import type { PageQuery, PageResult, Result } from '@/types/api'
 import { getToken } from './token'
+
+declare module 'axios' {
+  interface AxiosResponse {
+    /**
+     * 后端返回的完整响应体。
+     *
+     * 响应拦截器会把 Result 解包进 `data`，分页响应里的 total/page/size
+     * 就跟着丢了 —— 列表页只剩一个数组、拿不到总数。所以整份原样留在
+     * `pageResult` 上，由 `getPage()` 取用。
+     */
+    pageResult?: Result<unknown> & Partial<Omit<PageResult<unknown>, 'code' | 'message' | 'data'>>
+  }
+}
 
 /**
  * 请求基址。
@@ -97,8 +110,9 @@ instance.interceptors.response.use(
     }
 
     if (body.code === SUCCESS_CODE || body.code === HTTP_STYLE_SUCCESS_CODE) {
-      // 自动解包：调用方拿到的直接是 data 字段
-      return { ...response, data: body.data }
+      // 自动解包：调用方拿到的直接是 data 字段。
+      // 整份原样留在 pageResult 上 —— 分页响应解包后 total/page/size 就没了。
+      return { ...response, data: body.data, pageResult: body }
     }
 
     const message = body.message || '请求失败'
@@ -144,6 +158,21 @@ export async function put<T>(url: string, data?: unknown, config?: AxiosRequestC
 export async function del<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
   const response = await instance.delete(url, config)
   return response.data as T
+}
+
+/**
+ * 分页 GET —— 保留 total / page / size。
+ *
+ * `get()` 会把 Result 解包成 data（数组），分页信息就丢了；
+ * 这个方法取的是整份响应体，所以能拿到总数。
+ *
+ * @param url    接口地址
+ * @param params 分页参数（page 从 1 开始）
+ * @returns 分页结果
+ */
+export async function getPage<T>(url: string, params?: PageQuery): Promise<PageResult<T>> {
+  const response = await instance.get(url, { params })
+  return response.pageResult as PageResult<T>
 }
 
 export default instance

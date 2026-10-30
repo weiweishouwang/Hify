@@ -22,3 +22,12 @@ export interface PageResult<T> {
   page: number
   size: number
 }
+
+/**
+ * 分页请求参数。页码从 1 开始，每页条数上限 100（管理台 200）。
+ * 对应 `com.hify.shared.web.PageQuery`。
+ */
+export interface PageQuery {
+  page: number
+  size: number
+}

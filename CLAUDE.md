@@ -244,12 +244,13 @@ hify-web/
 └── src/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
     ├── views/         页面：模型管理 / Agent 管理 / 对话（+ 知识库 / 工作流 / 日志 的占位页）
-    ├── components/    业务组件：PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
+    ├── components/    通用组件：HifyTable（列表表格）、HifyFormDialog（表单弹窗）、PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
+    ├── composables/  通用逻辑：useRequest（请求三态）、useConfirm（删除确认）
     ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
     ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
     ├── router/        路由表 + 登录守卫
-    ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
-    ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts（令牌存取）、id.ts
+    ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / PageQuery / 聊天消息）
+    ├── utils/         request.ts（axios 实例 + 拦截器）、notify.ts（统一通知）、token.ts（令牌存取）、id.ts
     └── styles/        tokens.css（设计系统：颜色 `--color-*` + 尺寸动效 `--hify-*`，并映射 Element Plus）、index.css（重置、排版、布局原语、按钮外观）
 ```
 
@@ -260,6 +261,15 @@ hify-web/
 - **顶栏左边是面包屑**（`route.matched` 里带 `title` 的各级 + 一个「首页」），右边是头像与用户名
 - **页面统一用 `components/PageHeader.vue` 写标题区**：标题 + 描述 + 右侧操作区（`#actions` 插槽）。**页面自己不要再写一份标题**，位置与间距由组件统一
 - **页面根节点用 `.page`**（浅灰画布 + 24px 页边距），内容块用 `.page-card`（白底 + 轻阴影 + 圆角 + 20px 内边距）
+
+**通用组件与 composable**（新页面一律用这几个，不要再各写一遍）
+
+- **`HifyTable.vue`** —— 列表页表格。props：`columns`（label/prop/width/minWidth/align/fixed/formatter/slot）、`api`（`(params: {page, size}) => Promise<{data, total}>`）、`paginated`、`pageSize`、`rowKey`、`emptyText`。内部管 loading、分页参数、取数、空状态（`el-empty`）；`defineExpose` 暴露 `refresh()`，父组件增删改后调它刷新。**要自定义渲染的列在 `columns` 里写 `slot: 'xxx'`，父组件提供同名插槽**（插槽拿到 `row` / `index` / `value`）
+- **`HifyFormDialog.vue`** —— 表单弹窗。`v-model` 控制显隐，`v-model:loading` 接提交中的状态（**由父组件用 `useRequest` 的 loading 驱动**），`rules` 传 Element 的 `FormRules`。`defineExpose` 暴露 `open(data?)`：**传 data 是编辑模式（表单预填），不传是新增**。校验通过才触发 `submit` 事件，**API 调用由父组件做**；关闭时自动重置表单
+- **`useRequest(api)`** —— 返回 `{ data, loading, error, execute }`，自动管理请求三态，**失败不抛异常**（错误提示已由请求层弹出），页面里不用写 try/catch/finally
+- **`useConfirm(message, api, options?)`** —— 删除确认。返回 `() => Promise<boolean>`：**确认 → 调接口 → 提示成功**一行搞定；用户取消或接口失败都返回 false（不抛异常、不重复提示）
+- **`utils/notify.ts`** —— `notifySuccess` / `notifyError` / `notifyWarning`，统一时长与外观。**接口失败不要用它** —— 请求拦截器已经弹过了，再弹就是两次 toast
+- **分页接口用 `request.ts` 的 `getPage(url, params)`** —— `get()` 会把 Result 解包成 data 数组，`total/page/size` 就没了；`getPage()` 取的是整份响应体
 
 - **管理后台**（模型 / Agent / 知识库 / 工作流 / 日志）用 Element Plus 的表格与表单即可，不额外引入 UI 框架
 - **对话页是唯一的自定义界面**：消息气泡 + 流式增量渲染 + 工具调用中间态
