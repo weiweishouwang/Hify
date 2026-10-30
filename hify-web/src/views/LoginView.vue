@@ -6,6 +6,7 @@ import { login } from '@/api/auth'
 import { ApiError } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { newLocalId } from '@/utils/id'
+import BlankLayout from '@/layouts/BlankLayout.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,7 +58,7 @@ function enterAsDev(): void {
 </script>
 
 <template>
-  <div class="login">
+  <BlankLayout>
     <el-card class="login__card" shadow="always">
       <h2 class="login__title">登录 Hify</h2>
       <el-form label-position="top" @submit.prevent="submit">
@@ -89,18 +90,10 @@ function enterAsDev(): void {
         <code>POST /api/v1/auth/login</code> 接口也还未实现。
       </p>
     </el-card>
-  </div>
+  </BlankLayout>
 </template>
 
 <style scoped>
-.login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px;
-}
-
 .login__card {
   width: 100%;
   max-width: 380px;

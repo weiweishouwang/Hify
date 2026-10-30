@@ -1,18 +1,13 @@
+<script setup lang="ts">
+import BlankLayout from '@/layouts/BlankLayout.vue'
+</script>
+
 <template>
-  <div class="not-found">
+  <BlankLayout>
     <el-result icon="warning" title="404" sub-title="页面不存在">
       <template #extra>
         <el-button type="primary" @click="$router.push('/chat')">回到对话</el-button>
       </template>
     </el-result>
-  </div>
+  </BlankLayout>
 </template>
-
-<style scoped>
-.not-found {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-</style>

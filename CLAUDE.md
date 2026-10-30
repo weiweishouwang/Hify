@@ -217,15 +217,19 @@ hify-web/
 ├── env.d.ts           Vite 环境变量类型
 └── src/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
-    ├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
-    ├── components/    业务组件：消息气泡、工具调用中间态、占位面板
-    ├── layouts/       AppLayout（侧边栏 + 顶栏）
+    ├── views/         页面：模型管理 / Agent 管理 / 对话（+ 知识库 / 工作流 / 日志 的占位页）
+    ├── components/    业务组件：chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
+    ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
     ├── stores/        Pinia：user（当前用户）/ conversation（会话）/ connection（SSE 连接状态）
     ├── router/        路由表 + 登录守卫
     ├── types/         与后端 DTO 对齐的 TS 类型（Result / PageResult / 聊天消息）
     ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts（令牌存取）、id.ts
     └── styles/        全局样式与 CSS 变量
 ```
+
+- **`App.vue` 就是布局**：左侧 `el-menu` 菜单栏 + 右侧内容区 `router-view`。因此**路由表全是顶层路由，不套一层带 `children` 的布局路由** —— 套了会出现「App.vue 渲染 App.vue」的递归
+- **菜单项与路由一一对应**：菜单数组在 `App.vue` 的 `menus` 里，加一项要同时加一条路由
+- **独立页面**（登录页、404）用 `meta.hideLayout` 标记，`App.vue` 据此隐藏侧边栏与顶栏，页面自己套 `BlankLayout`
 
 - **管理后台**（模型 / Agent / 知识库 / 工作流 / 日志）用 Element Plus 的表格与表单即可，不额外引入 UI 框架
 - **对话页是唯一的自定义界面**：消息气泡 + 流式增量渲染 + 工具调用中间态

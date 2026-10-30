@@ -26,15 +26,18 @@ VITE_API_PROXY_TARGET=http://localhost:8082 npm run dev
 ```
 src/
 ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
-├── views/         页面：对话 / 模型管理 / Agent 配置 / 知识库 / 工作流 / 日志
-├── components/    业务组件
-├── layouts/       AppLayout
+├── views/         页面：模型管理 / Agent 管理 / 对话（+ 知识库 / 工作流 / 日志 占位页）
+├── components/    业务组件：chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel
+├── layouts/       BlankLayout（独立页面用的全屏容器）
 ├── stores/        Pinia：user / conversation / connection
 ├── router/        路由表 + 守卫
 ├── types/         与后端 DTO 对齐的类型
 ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts、id.ts
 └── styles/        全局样式
 ```
+
+`App.vue` 就是布局：左侧 `el-menu` 菜单栏 + 右侧内容区 `router-view`。路由表因此全是顶层路由，
+不套带 `children` 的布局路由 —— 套了会出现「App.vue 渲染 App.vue」的递归。
 
 约定见仓库根目录的 `CLAUDE.md`（§2.5 前端结构、§3.6 前端规范）。
 
