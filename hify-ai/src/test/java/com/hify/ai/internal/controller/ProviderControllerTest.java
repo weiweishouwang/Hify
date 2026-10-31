@@ -108,6 +108,25 @@ class ProviderControllerTest {
     }
 
     @Test
+    void listSerializesRealTimeHealthAndModelCounts() throws Exception {
+        var item = new com.hify.ai.api.ProviderListItemResp();
+        item.setPublicId(ID);
+        item.setEnabledModelCount(2L);
+        var health = new ProviderHealthResp();
+        health.setStatus("UP");
+        health.setLatencyMs(0L);
+        item.setProviderHealth(health);
+        var page = new ProviderListResp();
+        page.setItems(List.of(item));
+        page.setHasNext(false);
+        when(service.list(any())).thenReturn(page);
+        mvc.perform(get(ROOT).param("size", "10")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].enabledModelCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].providerHealth.status").value("UP"))
+                .andExpect(jsonPath("$.data.items[0].providerHealth.latencyMs").value(0));
+    }
+
+    @Test
     void detailIncludesModelsAndHealth() throws Exception {
         var config = new ProviderConfigResp();
         config.setPublicId(ID);

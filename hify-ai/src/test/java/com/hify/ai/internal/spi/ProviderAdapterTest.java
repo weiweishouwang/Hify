@@ -1,4 +1,4 @@
-package com.hify.ai.internal.service;
+package com.hify.ai.internal.spi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.ai.internal.entity.ModelProviderDO;
@@ -17,18 +17,20 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 
-/** 使用本地 HTTP 服务器验证三种协议，不调用任何真实供应商。 */
-class ProviderConnectivityServiceTest {
+/** 三个协议适配器的路径、鉴权头与模型列举；只连本地 HTTP 服务器，不调用真实供应商。 */
+class ProviderAdapterTest {
     MockWebServer server;
     ProviderCredentialCipher cipher;
-    ProviderConnectivityService service;
+    ProviderAdapterFactory factory;
 
     @BeforeEach
     void setUp() throws Exception {
         server = new MockWebServer();
         server.start();
         cipher = new ProviderCredentialCipher(Base64.getEncoder().encodeToString(new byte[32]));
-        service = new ProviderConnectivityService(new LlmHttpClient(), new JsonUtils(new ObjectMapper()), cipher);
+        factory = new ProviderAdapterFactory(new OpenAiCompatibleAdapter(new LlmHttpClient(), new JsonUtils(new ObjectMapper()), cipher),
+                new AnthropicAdapter(new LlmHttpClient(), new JsonUtils(new ObjectMapper()), cipher),
+                new OllamaAdapter(new LlmHttpClient(), new JsonUtils(new ObjectMapper()), cipher));
     }
 
     @AfterEach
@@ -42,11 +44,20 @@ class ProviderConnectivityServiceTest {
     }
 
     @Test
+    void factoryResolvesAdapterByType() {
+        assertThat(factory.getAdapter("openai")).isInstanceOf(OpenAiAdapter.class);
+        assertThat(factory.getAdapter("anthropic")).isInstanceOf(AnthropicAdapter.class);
+        assertThat(factory.getAdapter("ollama")).isInstanceOf(OllamaAdapter.class);
+        assertThatThrownBy(() -> factory.getAdapter("gemini")).isInstanceOf(com.hify.shared.exception.BizException.class);
+        assertThatThrownBy(() -> factory.getAdapter(null)).isInstanceOf(com.hify.shared.exception.BizException.class);
+    }
+
+    @Test
     void openAiUsesDecryptedBearerAndCatalogEndpoint() throws Exception {
         var provider = provider("openai");
         provider.setAuthConfig(Map.of("apiKey", cipher.encrypt("test-secret")));
-        server.enqueue(new MockResponse().setBody("{\"data\":[]}"));
-        service.testConnection(provider);
+        server.enqueue(new MockResponse().setBody("{\"data\":[{\"id\":\"gpt-x\"}]}"));
+        factory.getAdapter("openai").testConnection(provider);
         var request = server.takeRequest();
         assertThat(request.getMethod()).isEqualTo("GET");
         assertThat(request.getPath()).isEqualTo("/v1/models");
@@ -55,21 +66,37 @@ class ProviderConnectivityServiceTest {
     }
 
     @Test
+    void openAiCompatibleEndpointMayOmitAuthentication() throws Exception {
+        server.enqueue(new MockResponse().setBody("{\"data\":[]}"));
+        factory.getAdapter("openai").testConnection(provider("openai"));
+        assertThat(server.takeRequest().getHeader("Authorization")).isNull();
+    }
+
+    @Test
     void anthropicUsesKeyAndVersionHeaders() throws Exception {
         var provider = provider("anthropic");
         provider.setAuthConfig(Map.of("apiKey", cipher.encrypt("ant-test"), "anthropicVersion", "2023-06-01"));
         server.enqueue(new MockResponse().setBody("{\"data\":[]}"));
-        service.testConnection(provider);
+        factory.getAdapter("anthropic").testConnection(provider);
         var request = server.takeRequest();
+        assertThat(request.getPath()).isEqualTo("/v1/models");
         assertThat(request.getHeader("x-api-key")).isEqualTo("ant-test");
         assertThat(request.getHeader("anthropic-version")).isEqualTo("2023-06-01");
         assertThat(request.getHeader("Authorization")).isNull();
     }
 
     @Test
+    void anthropicWithoutCompleteCredentialsIsRejected() {
+        var provider = provider("anthropic");
+        provider.setAuthConfig(Map.of());
+        assertThatThrownBy(() -> factory.getAdapter("anthropic").testConnection(provider))
+                .isInstanceOf(com.hify.shared.exception.BizException.class);
+    }
+
+    @Test
     void ollamaUsesTagsWithoutAuthenticationOrInference() throws Exception {
         server.enqueue(new MockResponse().setBody("{\"models\":[]}"));
-        service.testConnection(provider("ollama"));
+        factory.getAdapter("ollama").testConnection(provider("ollama"));
         var request = server.takeRequest();
         assertThat(request.getPath()).isEqualTo("/api/tags");
         assertThat(request.getHeader("Authorization")).isNull();
@@ -77,10 +104,19 @@ class ProviderConnectivityServiceTest {
     }
 
     @Test
+    void listModelsReturnsUpstreamIdentifiersPerProtocol() throws Exception {
+        server.enqueue(new MockResponse().setBody("{\"data\":[{\"id\":\"gpt-a\"},{\"id\":\"gpt-b\"}]}"));
+        assertThat(factory.getAdapter("openai").listModels(provider("openai"))).containsExactly("gpt-a", "gpt-b");
+        server.enqueue(new MockResponse().setBody("{\"models\":[{\"name\":\"llama3:8b\"}]}"));
+        assertThat(factory.getAdapter("ollama").listModels(provider("ollama"))).containsExactly("llama3:8b");
+    }
+
+    @Test
     void successStatusWithInvalidPayloadIsNotHealthy() {
         for (String payload : new String[]{"<html>login</html>", "{}", "{\"data\":{}}", "null"}) {
             server.enqueue(new MockResponse().setBody(payload));
-            assertThatThrownBy(() -> service.testConnection(provider("openai"))).isInstanceOf(LlmApiException.class);
+            assertThatThrownBy(() -> factory.getAdapter("openai").testConnection(provider("openai")))
+                    .isInstanceOf(LlmApiException.class);
         }
     }
 }

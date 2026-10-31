@@ -9,6 +9,7 @@ import com.hify.ai.internal.mapper.ModelMapper;
 import com.hify.ai.internal.mapper.ModelProviderMapper;
 import com.hify.ai.internal.mapper.ProviderHealthMapper;
 import com.hify.ai.internal.security.ProviderCredentialCipher;
+import com.hify.ai.internal.spi.ProviderAdapterFactory;
 import com.hify.shared.config.CacheConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +66,33 @@ class ProviderCacheTest {
         query.setSize(1);
         service.list(query);
         verify(providers, times(4)).selectList(any(Wrapper.class));
+    }
+
+    @Test
+    void cachedListStillReadsFreshHealthAndCountsInBatches() {
+        var provider = ProviderServiceImplTest.entity();
+        when(providers.selectList(any(Wrapper.class))).thenReturn(List.of(provider));
+        var models = context.getBean(ModelMapper.class);
+        when(models.countEnabledByProviderIds(List.of(1L)))
+                .thenReturn(List.of(new com.hify.ai.internal.entity.ProviderModelCount(1L, 2L)));
+        var first = new ProviderHealthDO();
+        first.setProviderId(1L);
+        first.setProviderConfigVersion(1L);
+        first.setStatus("UP");
+        var second = new ProviderHealthDO();
+        second.setProviderId(1L);
+        second.setProviderConfigVersion(1L);
+        second.setStatus("DOWN");
+        when(health.selectByIds(List.of(1L))).thenReturn(List.of(first), List.of(second));
+        var query = new ProviderListQuery();
+        var up = (com.hify.ai.api.ProviderListItemResp) service.list(query).getItems().getFirst();
+        var down = (com.hify.ai.api.ProviderListItemResp) service.list(query).getItems().getFirst();
+        assertThat(up.getProviderHealth().getStatus()).isEqualTo("UP");
+        assertThat(down.getProviderHealth().getStatus()).isEqualTo("DOWN");
+        assertThat(down.getEnabledModelCount()).isEqualTo(2L);
+        verify(providers).selectList(any(Wrapper.class));
+        verify(health, times(2)).selectByIds(List.of(1L));
+        assertThat(queries.list(query).getItems().getFirst()).isNotInstanceOf(com.hify.ai.api.ProviderListItemResp.class);
     }
 
     @Test
@@ -147,7 +175,7 @@ class ProviderCacheTest {
         @Bean ModelMapper models() { return mock(ModelMapper.class); }
         @Bean ProviderHealthMapper health() { return mock(ProviderHealthMapper.class); }
         @Bean ProviderCredentialCipher cipher() { return new ProviderCredentialCipher(""); }
-        @Bean ProviderConnectivityService connectivity() { return mock(ProviderConnectivityService.class); }
+        @Bean ProviderAdapterFactory adapterFactory() { return mock(ProviderAdapterFactory.class); }
         @Bean CacheManager cacheManager() {
             return new TransactionAwareCacheManagerProxy(new ConcurrentMapCacheManager(CacheConfig.PROVIDER_CACHE));
         }
@@ -157,8 +185,8 @@ class ProviderCacheTest {
         }
         @Bean ProviderServiceImpl service(ModelProviderMapper providers, ModelMapper models,
                                           ProviderHealthMapper health, ProviderConfigQueryService queries,
-                                          ProviderCredentialCipher cipher, ProviderConnectivityService connectivity) {
-            return new ProviderServiceImpl(providers, models, health, queries, cipher, connectivity);
+                                          ProviderCredentialCipher cipher, ProviderAdapterFactory adapterFactory) {
+            return new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory);
         }
     }
 

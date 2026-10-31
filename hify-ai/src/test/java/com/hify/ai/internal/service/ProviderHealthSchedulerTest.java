@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.hify.ai.internal.entity.ModelProviderDO;
 import com.hify.ai.internal.entity.ProviderHealthObservation;
 import com.hify.ai.internal.mapper.ModelProviderMapper;
+import com.hify.ai.internal.spi.ProviderAdapter;
+import com.hify.ai.internal.spi.ProviderAdapterFactory;
 import com.hify.shared.http.LlmApiException;
 import com.hify.shared.http.LlmErrorKind;
 import com.hify.shared.redis.DistributedLock;
@@ -28,7 +30,8 @@ import static org.mockito.Mockito.*;
 
 class ProviderHealthSchedulerTest {
     ModelProviderMapper providers = mock(ModelProviderMapper.class);
-    ProviderConnectivityService connectivity = mock(ProviderConnectivityService.class);
+    ProviderAdapterFactory adapterFactory = mock(ProviderAdapterFactory.class);
+    ProviderAdapter adapter = mock(ProviderAdapter.class);
     ProviderHealthWriter writer = mock(ProviderHealthWriter.class);
     DistributedLock lock = mock(DistributedLock.class);
     IdempotentGuard guard = mock(IdempotentGuard.class);
@@ -41,15 +44,17 @@ class ProviderHealthSchedulerTest {
         scheduler = scheduler(tasks::add, clock);
         when(lock.tryLock(anyString(), any(Duration.class))).thenReturn("lock-token");
         when(guard.tryAcquire(anyString(), any(Duration.class))).thenReturn(true);
+        when(adapterFactory.getAdapter(anyString())).thenReturn(adapter);
     }
 
     ProviderHealthScheduler scheduler(Executor executor, Clock clock) {
-        return new ProviderHealthScheduler(providers, connectivity, writer, lock, guard, executor, clock);
+        return new ProviderHealthScheduler(providers, adapterFactory, writer, lock, guard, executor, clock);
     }
 
     ModelProviderDO provider(long id) {
         var provider = new ModelProviderDO();
         provider.setId(id);
+        provider.setType("openai");
         provider.setEnabled(true);
         provider.setDeleted(0);
         provider.setConfigVersion(1L);
@@ -68,7 +73,7 @@ class ProviderHealthSchedulerTest {
         assertThat(ProviderHealthScheduler.class.getMethod("schedule").getAnnotation(Scheduled.class).fixedRate())
                 .isEqualTo(60_000L);
         scheduler.schedule();
-        verifyNoInteractions(providers, connectivity, writer);
+        verifyNoInteractions(providers, adapterFactory, writer);
         when(providers.selectList(any(Wrapper.class))).thenReturn(List.of());
         tasks.remove().run();
         var query = ArgumentCaptor.forClass(Wrapper.class);
@@ -94,7 +99,7 @@ class ProviderHealthSchedulerTest {
         when(providers.selectById(1L)).thenReturn(provider(1));
         when(providers.selectById(2L)).thenReturn(provider(2));
         doThrow(new LlmApiException(LlmErrorKind.AUTH_FAILED, "secret-from-upstream"))
-                .when(connectivity).testConnection(argThat(row -> row.getId().equals(1L)));
+                .when(adapter).testConnection(argThat(row -> row.getId().equals(1L)));
         scheduler.schedule();
         while (!tasks.isEmpty()) { tasks.remove().run(); }
         var observation = ArgumentCaptor.forClass(ProviderHealthObservation.class);
@@ -110,12 +115,12 @@ class ProviderHealthSchedulerTest {
         enqueueOne();
         when(guard.tryAcquire(anyString(), any(Duration.class))).thenReturn(false);
         tasks.remove().run();
-        verifyNoInteractions(connectivity, writer);
+        verifyNoInteractions(adapterFactory, writer);
         verify(lock).unlock(anyString(), eq("lock-token"));
         when(lock.tryLock(anyString(), any(Duration.class))).thenReturn(null);
         enqueueOne();
         tasks.remove().run();
-        verifyNoInteractions(connectivity, writer);
+        verifyNoInteractions(adapterFactory, writer);
     }
 
     @Test
@@ -125,7 +130,7 @@ class ProviderHealthSchedulerTest {
         disabled.setEnabled(false);
         when(providers.selectById(1L)).thenReturn(disabled);
         tasks.remove().run();
-        verifyNoInteractions(connectivity, writer);
+        verifyNoInteractions(adapterFactory, writer);
         tasks.clear();
         scheduler = scheduler(tasks::add, Clock.offset(clock, Duration.ofMinutes(2)));
         scheduler.schedule();
@@ -136,7 +141,7 @@ class ProviderHealthSchedulerTest {
         tasks.clear();
         scheduler.schedule();
         tasks.remove().run();
-        verifyNoInteractions(connectivity, writer);
+        verifyNoInteractions(adapterFactory, writer);
     }
 
     @Test
@@ -148,6 +153,6 @@ class ProviderHealthSchedulerTest {
         enqueueOne();
         when(lock.tryLock(anyString(), any(Duration.class))).thenThrow(new IllegalStateException("redis unavailable"));
         assertThatCode(() -> tasks.remove().run()).doesNotThrowAnyException();
-        verifyNoInteractions(connectivity, writer);
+        verifyNoInteractions(adapterFactory, writer);
     }
 }

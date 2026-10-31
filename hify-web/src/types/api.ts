@@ -31,3 +31,15 @@ export interface PageQuery {
   page: number
   size: number
 }
+
+/** 游标分页不提供总数或页码跳转。 */
+export interface CursorQuery {
+  size: number
+  cursor?: string
+}
+
+export interface CursorPage<T> {
+  items: T[]
+  hasNext: boolean
+  nextCursor?: string | null
+}

@@ -4,6 +4,7 @@ import com.hify.ai.api.ModelConfigResp;
 import com.hify.ai.api.ProviderConfigResp;
 import com.hify.ai.api.ProviderCreateReq;
 import com.hify.ai.api.ProviderHealthResp;
+import com.hify.ai.api.ProviderListItemResp;
 import com.hify.ai.api.ProviderSummaryResp;
 import com.hify.ai.internal.entity.ModelDO;
 import com.hify.ai.internal.entity.ModelProviderDO;
@@ -17,6 +18,23 @@ import java.util.Objects;
 /** DO/DTO 转换；缓存和对外响应不携带密钥或加密封套。 */
 public final class ProviderConverter {
     private ProviderConverter() { }
+
+    public static ProviderListItemResp toListItem(ProviderSummaryResp source, ProviderHealthDO health, long count) {
+        var result = new ProviderListItemResp();
+        result.setId(source.getId());
+        result.setPublicId(source.getPublicId());
+        result.setName(source.getName());
+        result.setType(source.getType());
+        result.setBaseUrl(source.getBaseUrl());
+        result.setEnabled(source.getEnabled());
+        result.setConfigVersion(source.getConfigVersion());
+        result.setCredentialsConfigured(source.getCredentialsConfigured());
+        result.setCreatedAt(source.getCreatedAt());
+        result.setUpdatedAt(source.getUpdatedAt());
+        result.setProviderHealth(toHealth(health, source.getConfigVersion()));
+        result.setEnabledModelCount(count);
+        return result;
+    }
 
     public static ProviderSummaryResp toSummary(ModelProviderDO source) {
         var result = new ProviderSummaryResp();

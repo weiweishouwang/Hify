@@ -11,6 +11,8 @@ import com.hify.ai.internal.mapper.ModelMapper;
 import com.hify.ai.internal.mapper.ModelProviderMapper;
 import com.hify.ai.internal.mapper.ProviderHealthMapper;
 import com.hify.ai.internal.security.ProviderCredentialCipher;
+import com.hify.ai.internal.spi.ProviderAdapter;
+import com.hify.ai.internal.spi.ProviderAdapterFactory;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +36,8 @@ class ProviderServiceImplTest {
     @Mock ModelMapper models;
     @Mock ProviderHealthMapper health;
     @Mock ProviderConfigQueryService queries;
-    @Mock ProviderConnectivityService connectivity;
+    @Mock ProviderAdapterFactory adapterFactory;
+    @Mock ProviderAdapter adapter;
     ProviderCredentialCipher cipher;
     ProviderServiceImpl service;
 
@@ -42,7 +45,8 @@ class ProviderServiceImplTest {
     void setUp() {
         lenient().when(providers.findIdByName(anyString())).thenReturn(null);
         cipher = new ProviderCredentialCipher(Base64.getEncoder().encodeToString(new byte[32]));
-        service = new ProviderServiceImpl(providers, models, health, queries, cipher, connectivity);
+        lenient().when(adapterFactory.getAdapter(anyString())).thenReturn(adapter);
+        service = new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory);
     }
 
     static ProviderCreateReq createRequest() {
@@ -252,7 +256,7 @@ class ProviderServiceImplTest {
         var response = service.testConnection(existing.getPublicId());
         assertThat(response.getConnected()).isTrue();
         assertThat(response.getLatencyMs()).isNotNegative();
-        verify(connectivity).testConnection(existing);
+        verify(adapter).testConnection(existing);
         var query = ArgumentCaptor.forClass(Wrapper.class);
         verify(providers).selectOne(query.capture());
         assertThat(query.getValue().getSqlSegment()).doesNotContain("FOR UPDATE");
@@ -266,10 +270,27 @@ class ProviderServiceImplTest {
                         error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
         when(providers.selectOne(any(Wrapper.class))).thenReturn(entity());
         doThrow(new com.hify.shared.http.LlmApiException(com.hify.shared.http.LlmErrorKind.TIMEOUT))
-                .when(connectivity).testConnection(any());
+                .when(adapter).testConnection(any());
         assertThatThrownBy(() -> service.testConnection(entity().getPublicId()))
                 .isInstanceOf(com.hify.shared.http.LlmApiException.class);
         verifyNoInteractions(health);
+    }
+
+    @Test
+    void upstreamModelsComeFromTheAdapterOfTheProvidersProtocol() {
+        var existing = entity();
+        when(providers.selectOne(any(Wrapper.class))).thenReturn(existing);
+        when(adapter.listModels(existing)).thenReturn(java.util.List.of("gpt-x", "gpt-y"));
+        assertThat(service.listUpstreamModels(existing.getPublicId())).containsExactly("gpt-x", "gpt-y");
+        verify(adapterFactory).getAdapter("openai");
+        verify(adapter).listModels(existing);
+    }
+
+    @Test
+    void missingProviderHasNoUpstreamModels() {
+        assertThatThrownBy(() -> service.listUpstreamModels("missing"))
+                .isInstanceOfSatisfying(BizException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
 
     private static void assertConflict(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {

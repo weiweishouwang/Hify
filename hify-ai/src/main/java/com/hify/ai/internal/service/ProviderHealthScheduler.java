@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.hify.ai.internal.entity.ModelProviderDO;
 import com.hify.ai.internal.entity.ProviderHealthObservation;
 import com.hify.ai.internal.mapper.ModelProviderMapper;
+import com.hify.ai.internal.spi.ProviderAdapterFactory;
 import com.hify.shared.config.ThreadPoolConfig;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.http.LlmApiException;
@@ -38,19 +39,19 @@ public class ProviderHealthScheduler {
     private static final Duration WINDOW_TTL = Duration.ofMinutes(3);
     private static final String KEY_PREFIX = "hify:provider-health:";
     private final ModelProviderMapper providers;
-    private final ProviderConnectivityService connectivity;
+    private final ProviderAdapterFactory adapterFactory;
     private final ProviderHealthWriter writer;
     private final DistributedLock lock;
     private final IdempotentGuard guard;
     private final Executor executor;
     private final Clock clock;
 
-    public ProviderHealthScheduler(ModelProviderMapper providers, ProviderConnectivityService connectivity,
+    public ProviderHealthScheduler(ModelProviderMapper providers, ProviderAdapterFactory adapterFactory,
                                    ProviderHealthWriter writer, DistributedLock lock, IdempotentGuard guard,
                                    @Qualifier(ThreadPoolConfig.ASYNC_EXECUTOR) Executor executor,
                                    @Qualifier("providerHealthClock") Clock clock) {
         this.providers = providers;
-        this.connectivity = connectivity;
+        this.adapterFactory = adapterFactory;
         this.writer = writer;
         this.lock = lock;
         this.guard = guard;
@@ -126,7 +127,7 @@ public class ProviderHealthScheduler {
         LocalDateTime startedAt = now();
         long startNanos = System.nanoTime();
         try {
-            connectivity.testConnection(provider);
+            adapterFactory.getAdapter(provider.getType()).testConnection(provider);
             return observation(provider, startedAt, startNanos, true, null, null);
         } catch (LlmApiException exception) {
             String message = switch (exception.getKind()) {

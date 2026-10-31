@@ -10,16 +10,19 @@ import com.hify.ai.api.ProviderDetailResp;
 import com.hify.ai.api.ProviderListQuery;
 import com.hify.ai.api.ProviderListResp;
 import com.hify.ai.api.ProviderService;
+import com.hify.ai.api.ProviderSummaryResp;
 import com.hify.ai.api.ProviderUpdateReq;
 import com.hify.ai.internal.converter.ProviderConverter;
 import com.hify.ai.internal.entity.ModelDO;
 import com.hify.ai.internal.entity.ModelProviderDO;
 import com.hify.ai.internal.entity.ProviderHealthDO;
+import com.hify.ai.internal.entity.ProviderModelCount;
 import com.hify.ai.internal.mapper.ModelMapper;
 import com.hify.ai.internal.mapper.ModelProviderMapper;
 import com.hify.ai.internal.mapper.ProviderHealthMapper;
 import com.hify.ai.internal.security.ProviderAuthConfig;
 import com.hify.ai.internal.security.ProviderCredentialCipher;
+import com.hify.ai.internal.spi.ProviderAdapterFactory;
 import com.hify.shared.config.CacheConfig;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.exception.ErrorCode;
@@ -29,8 +32,11 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** 配置 CRUD 与详情聚合；事务仅包数据库操作，不发起任何上游请求。 */
 @Service
@@ -40,17 +46,17 @@ public class ProviderServiceImpl implements ProviderService {
     private final ProviderHealthMapper health;
     private final ProviderConfigQueryService queries;
     private final ProviderCredentialCipher cipher;
-    private final ProviderConnectivityService connectivity;
+    private final ProviderAdapterFactory adapterFactory;
 
     public ProviderServiceImpl(ModelProviderMapper providers, ModelMapper models, ProviderHealthMapper health,
                                ProviderConfigQueryService queries, ProviderCredentialCipher cipher,
-                               ProviderConnectivityService connectivity) {
+                               ProviderAdapterFactory adapterFactory) {
         this.providers = providers;
         this.models = models;
         this.health = health;
         this.queries = queries;
         this.cipher = cipher;
-        this.connectivity = connectivity;
+        this.adapterFactory = adapterFactory;
     }
 
     @Override
@@ -79,7 +85,27 @@ public class ProviderServiceImpl implements ProviderService {
 
     @Override
     public ProviderListResp list(ProviderListQuery query) {
-        return queries.list(query);
+        var cached = queries.list(query);
+        var result = new ProviderListResp();
+        result.setHasNext(cached.getHasNext());
+        result.setNextCursor(cached.getNextCursor());
+        if (cached.getItems().isEmpty()) {
+            result.setItems(List.of());
+            return result;
+        }
+        var ids = cached.getItems().stream().map(ProviderSummaryResp::getId).toList();
+        var healthById = health.selectByIds(ids).stream().collect(Collectors.toMap(
+                ProviderHealthDO::getProviderId, Function.identity()));
+        var counts = models.countEnabledByProviderIds(ids).stream().collect(Collectors.toMap(
+                ProviderModelCount::providerId,
+                ProviderModelCount::enabledModelCount));
+        var items = new ArrayList<ProviderSummaryResp>();
+        for (var summary : cached.getItems()) {
+            items.add(ProviderConverter.toListItem(summary, healthById.get(summary.getId()),
+                    counts.getOrDefault(summary.getId(), 0L)));
+        }
+        result.setItems(items);
+        return result;
     }
 
     @Override
@@ -149,17 +175,28 @@ public class ProviderServiceImpl implements ProviderService {
     /** 手动测试允许检查停用配置；不持有数据库事务、不改变定时探测的失败计数。 */
     @Override
     public ProviderConnectionTestResp testConnection(String publicId) {
+        var provider = requireProvider(publicId);
+        long start = System.nanoTime();
+        adapterFactory.getAdapter(provider.getType()).testConnection(provider);
+        var response = new ProviderConnectionTestResp();
+        response.setConnected(true);
+        response.setLatencyMs(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        return response;
+    }
+
+    @Override
+    public List<String> listUpstreamModels(String publicId) {
+        var provider = requireProvider(publicId);
+        return adapterFactory.getAdapter(provider.getType()).listModels(provider);
+    }
+
+    private ModelProviderDO requireProvider(String publicId) {
         requirePublicId(publicId);
         var provider = providers.selectOne(new QueryWrapper<ModelProviderDO>().eq("public_id", publicId));
         if (provider == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "模型接入点不存在");
         }
-        long start = System.nanoTime();
-        connectivity.testConnection(provider);
-        var response = new ProviderConnectionTestResp();
-        response.setConnected(true);
-        response.setLatencyMs(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-        return response;
+        return provider;
     }
 
     private ModelProviderDO requireExisting(String publicId) {
