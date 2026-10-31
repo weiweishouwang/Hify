@@ -63,6 +63,11 @@ spring:
 # 这个数据源由 hify-knowledge 的 internal/config 创建（走 JdbcTemplate，
 # 不与 MyBatis-Plus 混用），此处只提供连接参数。
 hify:
+  ai:
+    provider-health:
+      # 每分钟只读目录探测，不发起模型推理；可显式关闭。
+      enabled: ${HIFY_PROVIDER_HEALTH_ENABLED:true}
+
   vector:
     datasource:
       url: jdbc:postgresql://${HIFY_PG_HOST:localhost}:${HIFY_PG_PORT:5432}/${HIFY_PG_NAME:hify}

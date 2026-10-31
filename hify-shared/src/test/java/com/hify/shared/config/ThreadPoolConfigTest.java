@@ -36,7 +36,7 @@ class ThreadPoolConfigTest {
     }
 
     @Test
-    @DisplayName("asyncExecutor：核心 5、最大 20、队列 200、线程名 async- 前缀、CallerRunsPolicy")
+    @DisplayName("asyncExecutor：核心 5、最大 20、队列 200、线程名 async- 前缀、AbortPolicy")
     void asyncExecutorHasExpectedShape() {
         ThreadPoolExecutor pool = config.asyncExecutor();
         try {
@@ -45,7 +45,7 @@ class ThreadPoolConfigTest {
             assertThat(pool.getQueue()).isInstanceOf(ArrayBlockingQueue.class);
             assertThat(pool.getQueue().remainingCapacity()).isEqualTo(200);
             assertThat(pool.getRejectedExecutionHandler())
-                    .isInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class);
+                    .isInstanceOf(ThreadPoolExecutor.AbortPolicy.class);
         } finally {
             pool.shutdownNow();
         }
@@ -97,6 +97,21 @@ class ThreadPoolConfigTest {
 
             assertThat(thrown.get()).isNull();
             assertThat(ranOn.get()).isEqualTo(Thread.currentThread().getName());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("asyncExecutor 拒绝任务时抛异常，不在提交线程执行探测")
+    void asyncRejectionNeverRunsInCallerThread() {
+        ThreadPoolExecutor pool = config.asyncExecutor();
+        try {
+            AtomicReference<String> ranOn = new AtomicReference<>();
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> pool.getRejectedExecutionHandler()
+                    .rejectedExecution(() -> ranOn.set(Thread.currentThread().getName()), pool))
+                    .isInstanceOf(java.util.concurrent.RejectedExecutionException.class);
+            assertThat(ranOn.get()).isNull();
         } finally {
             pool.shutdownNow();
         }

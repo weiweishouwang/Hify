@@ -1,6 +1,8 @@
 package com.hify.shared.config;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.hify.shared.json.TimeSerializers;
@@ -73,22 +75,45 @@ public class CacheConfig {
                         .fromSerializer(new GenericJackson2JsonRedisSerializer(cacheObjectMapper())));
 
         Map<String, RedisCacheConfiguration> byName = new HashMap<>();
-        byName.put(PROVIDER_CACHE, defaultConfig.entryTtl(DEFAULT_TTL));
+        byName.put(PROVIDER_CACHE, defaultConfig.entryTtl(DEFAULT_TTL)
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(
+                        new GenericJackson2JsonRedisSerializer(providerCacheObjectMapper()))));
         byName.put(AGENT_CACHE, defaultConfig.entryTtl(DEFAULT_TTL));
         byName.put(SESSION_CACHE, defaultConfig.entryTtl(SESSION_TTL));
 
         return RedisCacheManager.builder(connectionFactory)
+                .transactionAware()
                 .cacheDefaults(defaultConfig)
                 .withInitialCacheConfigurations(byName)
                 .build();
     }
 
     /**
+     * 接入点缓存需要恢复不同的 DTO 类型。只给此缓存启用受限类型信息，
+     * 不改变其他缓存的既有格式，也不修改 API 使用的 ObjectMapper。
+     */
+    private static ObjectMapper providerCacheObjectMapper() {
+        ObjectMapper mapper = cacheObjectMapper();
+        var validator = BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.hify.ai.api.")
+                .allowIfSubType(java.util.ArrayList.class)
+                .allowIfSubType(java.util.LinkedHashMap.class)
+                .allowIfSubType(java.math.BigDecimal.class)
+                .allowIfSubType(java.math.BigInteger.class)
+                .allowIfSubType(org.springframework.cache.support.NullValue.class)
+                .build();
+        mapper.activateDefaultTyping(validator, ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        GenericJackson2JsonRedisSerializer.registerNullValueSerializer(mapper, null);
+        return mapper;
+    }
+
+    /**
      * 缓存专用的 ObjectMapper。
      *
-     * <p>刻意不复用容器里那个：{@link GenericJackson2JsonRedisSerializer} 会往
-     * 传入的 mapper 上注册默认类型信息（为了反序列化时还原类型），
-     * 复用会让 API 响应里多出 {@code @class} 字段。
+     * <p>刻意不复用容器里那个，避免缓存使用的类型信息进入 API 响应。
+     * 传入自定义 mapper 时，GenericJackson2JsonRedisSerializer 不会替我们开启
+     * 默认类型信息；provider-cache 单独通过受限白名单配置类型恢复。
+     * 其他缓存维持原有格式。
      *
      * @return 缓存专用的 ObjectMapper
      */

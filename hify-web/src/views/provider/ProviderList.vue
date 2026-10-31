@@ -9,8 +9,13 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useRequest } from '@/composables/useRequest'
 import { notifySuccess } from '@/utils/notify'
 
-/** 接入点类型。OpenAI 一档兼容 DeepSeek、Ollama 等所有 OpenAI 协议的服务。 */
-type ProviderType = 'OpenAI' | 'Claude' | 'Gemini' | 'Ollama'
+/**
+ * 接入点的协议档位。
+ *
+ * 存的是**协议**不是厂商名 —— DeepSeek、Qwen、vLLM 全是 `OpenAI` 这一档，
+ * 它们之间只差一个 Base URL；厂商名放在「名称」里自由填写。
+ */
+type ProviderType = 'OpenAI' | 'Anthropic' | 'Ollama'
 
 /** 一条模型接入点。 */
 interface Provider {
@@ -37,7 +42,7 @@ interface ProviderForm {
   baseUrl: string
 }
 
-const PROVIDER_TYPES: ProviderType[] = ['OpenAI', 'Claude', 'Gemini', 'Ollama']
+const PROVIDER_TYPES: ProviderType[] = ['OpenAI', 'Anthropic', 'Ollama']
 
 /**
  * Mock 数据。
@@ -57,7 +62,7 @@ const providers = ref<Provider[]>([
   {
     id: 2,
     name: 'Anthropic 官方',
-    type: 'Claude',
+    type: 'Anthropic',
     baseUrl: 'https://api.anthropic.com/v1',
     apiKey: 'sk-ant-mock-8d3e6f1a',
     enabled: true,
@@ -65,9 +70,9 @@ const providers = ref<Provider[]>([
   },
   {
     id: 3,
-    name: 'Google AI Studio',
-    type: 'Gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    name: 'Google AI Studio（OpenAI 兼容）',
+    type: 'OpenAI',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     apiKey: 'AIza-mock-0b5e7c93',
     enabled: false,
     createdAt: '2026-09-20 09:41',
@@ -123,7 +128,8 @@ const tableRef = ref<{ refresh: () => Promise<void> }>()
 const rules: FormRules = {
   name: [{ required: true, message: '名称不能为空', trigger: 'blur' }],
   type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  apiKey: [{ required: true, message: 'API Key 不能为空', trigger: 'blur' }],
+  // API Key 不设必填：Ollama / vLLM / LM Studio 这类本地服务不鉴权。
+  // 填错了会在「连通性测试」里以鉴权失败暴露，比在这里按格式猜强。
   baseUrl: [
     { required: true, message: 'Base URL 不能为空', trigger: 'blur' },
     {
@@ -246,7 +252,7 @@ async function handleDelete(row: Provider): Promise<void> {
   <div class="page">
     <PageHeader
       title="模型提供商管理"
-      description="统一管理模型接入点：OpenAI 兼容端点、Claude、Gemini 与本地 Ollama 的连接配置。"
+      description="统一管理模型接入点：OpenAI 兼容端点、Anthropic Messages 与本地 Ollama 的连接配置。"
     >
       <template #actions>
         <el-button type="primary" @click="openCreate">
@@ -303,7 +309,7 @@ async function handleDelete(row: Provider): Promise<void> {
           <el-input
             v-model="form.apiKey"
             :type="showApiKey ? 'text' : 'password'"
-            placeholder="上游服务的访问密钥"
+            placeholder="上游服务的访问密钥，本地服务可留空"
           >
             <template #suffix>
               <button type="button" class="field-toggle" @click="showApiKey = !showApiKey">

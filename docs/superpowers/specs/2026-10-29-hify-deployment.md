@@ -36,7 +36,7 @@
               ┌───────────────────────────────┘
               │ egress（集群外）
               ▼
-        OpenAI / Claude / Gemini
+        OpenAI 兼容 / Claude / DeepSeek 等
         （Ollama 走 ClusterIP 内部服务）
 ```
 
@@ -417,7 +417,7 @@ Spring Boot 的 relaxed binding 让 `HIFY_LLM_PROVIDERS_OPENAI_BASE_URL` 映射�
 
 | 密钥 | 存放 |
 |---|---|
-| 模型 API Key（OpenAI/Claude/Gemini） | Secret，最好用 External Secrets 从 Vault/密钥平台同步 |
+| 模型 API Key（OpenAI 兼容 / Claude） | Secret，最好用 External Secrets 从 Vault/密钥平台同步 |
 | MCP server token | Secret |
 | MySQL / PG 密码 | Secret |
 | JWT 签名密钥 | Secret |

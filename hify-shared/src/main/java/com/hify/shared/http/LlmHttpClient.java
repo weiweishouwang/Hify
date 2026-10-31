@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>两条路径：
  * <ul>
- *   <li>{@link #post} —— 普通请求，用 {@link RestTemplate}，读超时 60 秒</li>
+ *   <li>{@link #post} / {@link #get} —— 普通请求，用 {@link RestTemplate}，读超时 60 秒</li>
  *   <li>{@link #stream} —— 流式 SSE 请求，用 OkHttp 读响应体、自己解析 SSE 帧，读超时 120 秒</li>
  * </ul>
  *
@@ -98,18 +98,27 @@ public class LlmHttpClient {
      * @throws LlmApiException 上游返回错误状态、超时或连接失败
      */
     public String post(String url, Map<String, String> headers, String body) {
+        return exchange(url, headers, body, HttpMethod.POST);
+    }
+
+    /** 只读端点探测，复用普通请求的超时、日志和错误分类，不发送请求体。 */
+    public String get(String url, Map<String, String> headers) {
+        return exchange(url, headers, null, HttpMethod.GET);
+    }
+
+    private String exchange(String url, Map<String, String> headers, String body, HttpMethod method) {
         HttpHeaders httpHeaders = new HttpHeaders();
         if (headers != null) {
             headers.forEach(httpHeaders::add);
         }
-        if (!httpHeaders.containsKey(HttpHeaders.CONTENT_TYPE)) {
+        if (HttpMethod.POST.equals(method) && !httpHeaders.containsKey(HttpHeaders.CONTENT_TYPE)) {
             httpHeaders.set(HttpHeaders.CONTENT_TYPE, DEFAULT_CONTENT_TYPE);
         }
         HttpEntity<String> entity = new HttpEntity<>(body, httpHeaders);
 
         long startNanos = System.nanoTime();
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response = restTemplate.exchange(url, method, entity, String.class);
             String content = response.getBody();
             log.info("LLM 请求完成 url={} status={} cost={}ms length={}",
                     url, response.getStatusCode().value(), elapsedMillis(startNanos), lengthOf(content));

@@ -15,7 +15,7 @@
 
 | 模块 | 分类 | 范围 |
 |---|---|---|
-| 模型管理 | **核心** | 模型接入点的 CRUD + 连通性测试；统一走 OpenAI 兼容协议 |
+| 模型管理 | **核心** | 模型接入点的 CRUD + 连通性测试；三档协议：OpenAI 兼容 / Anthropic / Ollama 原生 |
 | Agent 配置 | **核心** | 选模型、绑工具、设提示词；可选绑知识库、参数区 |
 | 对话引擎 | **核心** | 流式输出 + 多轮会话 + 工具调用循环；每个 Agent 一个可分享 Web App |
 | 工具集成 | **核心** | 内置工具 / 自定义 HTTP 工具 / MCP 工具，三类共用一个 Tool 接口 |
@@ -32,7 +32,7 @@
 - **前端**：Vue 3 + TypeScript + Element Plus
 - **容器化**：Docker + Docker Compose（开发）/ Docker + Kubernetes（生产）
 - **MCP**：`io.modelcontextprotocol.sdk:mcp`（Java 17+）
-- **LLM 接入**：OpenAI 兼容端点（OpenAI / Ollama / DeepSeek / Qwen / vLLM）+ Anthropic + Gemini，三套适配器
+- **LLM 接入**：一期三套适配器 —— OpenAI 兼容（OpenAI / DeepSeek / Qwen / Kimi / GLM / vLLM / SiliconFlow 等，同档之间只差 base_url）、Anthropic Messages、Ollama 原生；Gemini 原生放二期
 
 ### 1.4 规模与部署形态
 
@@ -162,7 +162,7 @@ Ingress (nginx-ingress) ── TLS 终止 · 路由 · SSE 超时与缓冲策略
   │                       ├──→ Redis             (缓存/限流/锁/幂等)
   │                       ├──→ PostgreSQL+pgvector (向量)
   │                       ├──→ MCP server        (独立 Deployment, HTTP transport)
-  │                       └──→ LLM API           (出集群: OpenAI / Claude / Gemini)
+  │                       └──→ LLM API           (出集群: OpenAI 兼容 / Claude / DeepSeek 等)
   │                            本地 Ollama 走 ClusterIP，不出集群
   │
   └── / ────────────────→ hify-web (nginx + Vue 静态, 2 副本)
@@ -480,7 +480,12 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 
 ### 3.5 LLM 调用
 
-- **统一抽象**：内部只认 `LlmClient{ provider, model, stream(), complete() }` 与 `LlmChunk{ text, toolCall, usage, finishReason }`；各 provider 的 SSE 帧格式差异（OpenAI 的 `data:[DONE]`、Claude 的 `content_block_delta`、Gemini 的 `candidates[]`）在适配器里归一化，引擎不感知
+- **统一抽象**：内部只认 `LlmClient{ provider, model, stream(), complete() }` 与 `LlmChunk{ text, toolCall, usage, finishReason }`；各 provider 的流式帧格式差异（OpenAI 的 `data:[DONE]`、Claude 具名的 `content_block_delta`、Ollama 原生的 NDJSON 一行一帧）在适配器里归一化，引擎不感知
+- **`provider.type` 存协议档位，不存厂商名** —— 取值 `openai` / `anthropic` / `ollama`（`gemini` 二期）。同一个 `openai` 档覆盖 OpenAI 官方、DeepSeek、Qwen、Kimi、GLM、vLLM、LM Studio、SiliconFlow、OpenRouter，彼此只差 base_url；厂商名放在 `name` 里自由填写
+- **base_url 存协议根，路径由适配器自己拼** —— openai 档拼 `/chat/completions`，anthropic 档拼 `/messages`，ollama 档拼 `/api/chat`。**各家的 base_url 结尾不统一**（anthropic 官方带 `/v1`，Ollama 的 Anthropic 兼容层是裸 host），别在适配器里写 if 去猜路径
+- **api_key 允许为空** —— Ollama / vLLM / LM Studio 不鉴权；数据库里 `ai_model_provider.api_key_encrypted` 本来就允许 NULL，别在前端表单里设成必填
+- **Ollama 原生走 NDJSON，不是 SSE** —— `Content-Type: application/x-ndjson`，一行一个完整 JSON，末帧 `done:true` 才带 usage（字段是 `prompt_eval_count` / `eval_count`，不是 `prompt_tokens` / `completion_tokens`）；tool call 的 `arguments` 直接是 JSON 对象（OpenAI 兼容层给的是 JSON 字符串片段）。**`shared.http.SseFrameReader` 现在只切 SSE 帧，要接 Ollama 得先抽成「切 SSE 帧」与「按行切 JSON」两种策略**
+- **"OpenAI 兼容"是不支持的参数静默丢弃，不是报错** —— Ollama 的 `/v1` 层丢掉 `tool_choice`（强制工具调用失效）、忽略 `num_ctx`（模型按 4096 上下文加载，超了不报错只是开始胡言乱语）、丢掉 `logprobs` / `n` / 远程 `image_url`。**连通性测试必须测两层**：① 协议连通（最小请求通不通）② 能力连通（带一个 `tools` 定义跑一轮，看能不能回出 tool_calls）—— 只测第一层，Ollama 会显示「正常」但 Agent 的工具循环是坏的
 - **传输层用阻塞式的 `shared.http.LlmHttpClient`，不用 WebClient 响应式** —— `post()` 走 RestTemplate（连接 5s / 读 60s），`stream()` 走 OkHttp（连接 5s / 读 120s）自己解析 SSE 帧
 - **调用方必须把它提交到 `llmExecutor` 线程池** —— 两个方法都阻塞，直接在 Controller 里调就是拿 Tomcat worker 线程去等 LLM，60 秒一次的非流式调用能把 200 个线程全锁死
 - **`llmExecutor` 的 50 个线程就是并发 LLM 调用的天花板** —— 队列（100）满且 50 个线程都在跑时，`CallerRunsPolicy` 会让**提交方线程自己执行**；提交方通常是 Tomcat 线程，于是照样被占住。并发模型按这个数算，不要按「Tomcat 有 200 线程」算
@@ -543,7 +548,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **双库：MySQL（业务）+ PostgreSQL/pgvector（向量）** —— MySQL 是团队既有技术栈；向量库独立成 Service 后，将来换 Qdrant/Milvus 只需替换 `knowledge` 模块的数据访问实现。**已否决：整体换 PostgreSQL 单库**（少一个组件，但放弃既有栈）。
 - **不引入 WebFlux** —— MyBatis-Plus 是 JDBC 阻塞，WebFlux 下要用 R2DBC 而 MP 的 R2DBC 支持不成熟。**替代方案：WebFlux + R2DBC 或 Spring Data R2DBC**，代价是重做数据层。
 - **调上游 LLM 用阻塞式客户端 + 专用线程池，不用响应式**（2026-10-30 定）—— `shared.http.LlmHttpClient`（`post()` 走 RestTemplate，`stream()` 走 OkHttp 自己解析 SSE 帧）阻塞，调用方提交到 `llmExecutor`。**替代方案：WebClient + Reactor Netty** —— 每 provider 一个 `ConnectionProvider`、`Flux.timeout()` 表达 chunk 空闲超时、背压，这些语义更贴合流式场景，代价是多一套 Reactor 编程模型、异常传播要绕着写，且与「不引入 WebFlux」的取向冲突更大。选阻塞式的理由：超时与连接语义都直白，适配器就是普通 Java，异常直接往外抛。**代价：并发上限由 `llmExecutor` 的 50 个线程决定，而不是每 provider 的 `maxConnections`；且 `CallerRunsPolicy` 在队列满时会让提交方（多半是 Tomcat 线程）自己跑任务**
-- **LLM 适配器只做 3 个** —— Ollama 有 OpenAI 兼容端点（0.1.x+），不必单写适配器。
+- **LLM 适配器一期做 3 个：OpenAI 兼容 / Anthropic Messages / Ollama 原生** —— 前两个覆盖绝大多数用量，供应商名单靠 base_url 拉长；**Ollama 单写原生而不是蹭 OpenAI 兼容层**，因为只有原生能透传 `options.num_ctx`（兼容层忽略它，模型按 4096 上下文加载），且原生的 tool 行为更可靠。**代价**：Ollama 原生是 NDJSON 不是 SSE，多一套分帧与字段归一化。**Gemini 原生放二期** —— Google 的 OpenAI 兼容端点能先顶上
 - **模型接入点与模型分两张表** —— **连通性测试的粒度决定表的粒度**：端点能通不代表某个模型名在该账号下可用，一张表表达不了这两件事。
 
 ### 数据模型

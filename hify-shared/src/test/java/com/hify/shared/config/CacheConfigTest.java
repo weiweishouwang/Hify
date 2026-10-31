@@ -38,7 +38,8 @@ class CacheConfigTest {
      */
     private static RedisCacheConfiguration configOf(RedisCacheManager manager, String name) {
         assertThat(manager.getCache(name)).isNotNull();
-        return manager.getCacheConfigurations().get(name);
+        var cache = (org.springframework.cache.transaction.TransactionAwareCacheDecorator) manager.getCache(name);
+        return ((RedisCache) cache.getTargetCache()).getCacheConfiguration();
     }
 
     @Test
@@ -79,7 +80,8 @@ class CacheConfigTest {
     @DisplayName("缓存名保留原样，前缀只加在 key 上")
     void cacheNameKeepsItsOwnName() {
         RedisCacheManager manager = buildManager();
-        RedisCache cache = (RedisCache) manager.getCache(CacheConfig.PROVIDER_CACHE);
+        var cache = (org.springframework.cache.transaction.TransactionAwareCacheDecorator)
+                manager.getCache(CacheConfig.PROVIDER_CACHE);
         assertThat(cache.getName()).isEqualTo(CacheConfig.PROVIDER_CACHE);
     }
 }

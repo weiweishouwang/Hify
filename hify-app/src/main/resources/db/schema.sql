@@ -3,11 +3,11 @@
 -- 规范来源：CLAUDE.md §3.3（数据库规范）、§2.4（数据模型）
 --           docs/superpowers/specs/2026-10-29-hify-database-spec.md（字段类型、索引清单、分区与验收清单）
 --
--- 内容：MySQL 业务库 16 张表 + PostgreSQL 向量库 1 张表
+-- 内容：MySQL 业务库 17 张表 + 演示表 demo_item；PostgreSQL 向量库见 schema-pg.sql
 --
 -- 通用约定
 --   引擎 InnoDB，字符集 utf8mb4 / utf8mb4_0900_ai_ci
---   主键 BIGINT UNSIGNED AUTO_INCREMENT
+--   配置表主键 BIGINT UNSIGNED AUTO_INCREMENT；健康表复用 provider_id，事件流表用复合主键
 --   对外 ID 用 public_id CHAR(26)（ULID，Crockford Base32）
 --   时间一律 DATETIME(3) 存 UTC，不用 TIMESTAMP
 --   状态与类型用 VARCHAR(32) + 应用层常量，不用 ENUM
@@ -18,7 +18,7 @@
 -- 逻辑删除
 --   实体表用 deleted TINYINT（0 未删除 / 1 已删除）。
 --   事件流表（分区）不带该列——@TableLogic 会给每条 SQL 追加条件，破坏分区裁剪。
---   BaseDO 同样不带该列，需要软删的表在自己的 DO 上单独声明。
+--   配置实体继承 BaseEntity 复用主键、审计和逻辑删除；健康快照不继承，不带 deleted。
 --
 -- 事件流表
 --   conv_message / conv_run / conv_message_citation / wf_run 四张表按月分区，
@@ -41,7 +41,7 @@
 --   或 JSON_CONTAINS(tool_ids, JSON_QUOTE('tool_xxx')) 都是全表扫，
 --   索引完全用不上。database-spec §2.3 的示例写法有误，已同步更正。
 #
--- 执行
+-- 执行（仅用于新建空库，不是已有数据库的迁移脚本）
 --   mysql -uhify -phify hify < hify-app/src/main/resources/db/schema.sql
 -- 向量库在另一个数据库，DDL 在同目录的 schema-pg.sql（PostgreSQL 语法，
 -- 混进本文件会让 mysql 客户端在最后一行报错，所以拆开）。
@@ -93,54 +93,74 @@ CREATE TABLE `api_key` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='API Key。程序化调用用，保留调用者身份做审计';
 
+-- 模型配置与健康快照分表：配置写少读多，可缓存；健康观测独立更新，不触发配置缓存失效。
 CREATE TABLE `ai_model_provider` (
-  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',
-  `public_id`  CHAR(26)        NOT NULL                             COMMENT '对外 ID，ULID(Crockford Base32)',
-  `name`        VARCHAR(128) NOT NULL DEFAULT ''                     COMMENT '接入点名称',
-  `type`        VARCHAR(32)  NOT NULL DEFAULT 'openai'               COMMENT '适配器类型：openai / anthropic / gemini / ollama',
-  `base_url`    VARCHAR(512) NOT NULL DEFAULT ''                     COMMENT '端点地址，如 https://api.openai.com/v1',
-  `api_key_encrypted` VARCHAR(1024) NULL                            COMMENT '加密后的凭据（AES-GCM，密文 base64）',
-  `enabled`     TINYINT       NOT NULL DEFAULT 1                     COMMENT '是否启用：0 否 / 1 是',
-  `max_connections` INT UNSIGNED NOT NULL DEFAULT 48                 COMMENT 'WebClient 连接池上限，云端 48、Ollama 6（受显存限制）',
-  `timeout_config` JSON      NULL                                   COMMENT '超时覆盖：connect/ttfb/overall/streamIdle 毫秒',
-  `retry_config`   JSON      NULL                                   COMMENT '重试覆盖：最大次数、退避基数、上限',
-  `breaker_config` JSON      NULL                                   COMMENT '熔断覆盖：失败率阈值、慢调用阈值、窗口',
-  `fallback_chain` JSON      NULL                                   COMMENT '降级链：备选接入点与模型的顺序',
-  `extra_config`   JSON      NULL                                   COMMENT '其他透传参数',
-  `created_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
-  `updated_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间(UTC)',
-  `created_by` BIGINT UNSIGNED NULL                                 COMMENT '创建者 user.id',
-  `deleted`    TINYINT         NOT NULL DEFAULT 0                  COMMENT '逻辑删除：0 未删除 / 1 已删除',
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `public_id` CHAR(26) NOT NULL COMMENT '对外 ID，ULID(Crockford Base32)',
+  `name` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '接入点名称',
+  `type` VARCHAR(32) NOT NULL DEFAULT 'openai' COMMENT '一期协议：openai / anthropic / ollama',
+  `base_url` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '协议根地址，适配器追加具体请求路径',
+  `auth_config` JSON NOT NULL DEFAULT (JSON_OBJECT()) COMMENT '按协议存储鉴权配置；敏感值由业务层 AES-GCM 加密后写入，禁止明文密钥',
+  `extra_params` JSON NULL COMMENT '接入点级上游扩展参数，不存放凭据',
+  `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：0 否 / 1 是',
+  `config_version` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '连接配置版本，由业务层递增，识别旧配置的健康观测',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '配置更新时间(UTC)',
+  `created_by` BIGINT UNSIGNED NULL COMMENT '创建者 user.id',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0 未删除 / 1 已删除',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_public_id` (`public_id`),
   UNIQUE KEY `uk_name` (`name`),
   KEY `idx_type_enabled` (`type`, `enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='模型接入点。一个端点 + 一套凭据 + 一组调用策略';
+  COMMENT='模型接入点。一个协议 + 一个端点 + 一套鉴权配置，健康状态独立存储';
 
 CREATE TABLE `ai_model` (
-  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',
-  `public_id`  CHAR(26)        NOT NULL                             COMMENT '对外 ID，ULID(Crockford Base32)',
-  `provider_id`   BIGINT UNSIGNED NOT NULL                            COMMENT '所属接入点 ai_model_provider.id',
-  `model_name`    VARCHAR(128) NOT NULL DEFAULT ''                    COMMENT '模型名，调用时用的那个（如 gpt-4o-mini）',
-  `display_name`  VARCHAR(128) NOT NULL DEFAULT ''                    COMMENT '展示名',
-  `model_type`    VARCHAR(32)  NOT NULL DEFAULT 'chat'                COMMENT '类型：chat / embedding / rerank',
-  `capabilities`  JSON         NULL                                  COMMENT '能力标记：tool_call / vision / stream',
-  `context_window` INT UNSIGNED NULL                                 COMMENT '上下文窗口 token 数',
-  `max_output_tokens` INT UNSIGNED NULL                              COMMENT '单次最大输出 token 数',
-  `default_params` JSON        NULL                                  COMMENT '默认调用参数：temperature / top_p 等',
-  `enabled`       TINYINT       NOT NULL DEFAULT 1                    COMMENT '是否启用：0 否 / 1 是',
-  `sort_order`    INT UNSIGNED NOT NULL DEFAULT 0                    COMMENT '排序，小的在前',
-  `created_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
-  `updated_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间(UTC)',
-  `created_by` BIGINT UNSIGNED NULL                                 COMMENT '创建者 user.id',
-  `deleted`    TINYINT         NOT NULL DEFAULT 0                  COMMENT '逻辑删除：0 未删除 / 1 已删除',
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `public_id` CHAR(26) NOT NULL COMMENT '对外 ID，ULID(Crockford Base32)',
+  `provider_id` BIGINT UNSIGNED NOT NULL COMMENT '所属接入点 ai_model_provider.id',
+  `model_name` VARCHAR(128) COLLATE utf8mb4_0900_as_cs NOT NULL DEFAULT '' COMMENT '上游模型标识，区分大小写，原样发送',
+  `display_name` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '展示名',
+  `model_type` VARCHAR(32) NOT NULL DEFAULT 'chat' COMMENT '用途：chat / embedding，rerank 预留',
+  `capabilities` JSON NULL COMMENT '声明的能力对象：stream / tool_call / vision，声明不等于验证通过',
+  `context_window` INT UNSIGNED NULL COMMENT '上下文窗口上限 token 数，NULL 表示未知',
+  `max_output_tokens` INT UNSIGNED NULL COMMENT '单次输出上限 token 数，NULL 表示未知',
+  `embedding_dimension` INT UNSIGNED NULL COMMENT '向量维度，非 embedding 模型或未知时为 NULL',
+  `default_params` JSON NULL COMMENT '通用默认生成参数，由调用层校验后使用',
+  `extra_params` JSON NULL COMMENT '模型级上游扩展参数，不存放凭据',
+  `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：0 否 / 1 是；接入点也必须启用',
+  `sort_order` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，小的在前',
+  `config_version` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '影响调用的模型配置版本，由业务层递增',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间(UTC)',
+  `created_by` BIGINT UNSIGNED NULL COMMENT '创建者 user.id',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0 未删除 / 1 已删除',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_public_id` (`public_id`),
   UNIQUE KEY `uk_provider_model` (`provider_id`, `model_name`),
   CONSTRAINT `fk_ai_model_provider` FOREIGN KEY (`provider_id`) REFERENCES `ai_model_provider` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='模型。挂在接入点下，同名模型在不同账号下可用性可能不同，故与接入点分表';
+  COMMENT='接入点下的模型。同名模型在不同接入点下独立配置与启停';
+
+CREATE TABLE `ai_model_provider_health` (
+  `provider_id` BIGINT UNSIGNED NOT NULL COMMENT '接入点主键，与配置表一对一，不生成独立自增 ID',
+  `status` VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN' COMMENT '可用性：UNKNOWN / UP / DOWN，与启停和熔断分开',
+  `fail_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '连续失败次数，成功清零，不等同于熔断滑动窗口计数',
+  `latency_ms` BIGINT UNSIGNED NULL COMMENT '最近一次观测总耗时(毫秒)，不是首字耗时；未观测时为 NULL',
+  `last_success_at` DATETIME(3) NULL COMMENT '最近成功时间(UTC)',
+  `last_failure_at` DATETIME(3) NULL COMMENT '最近失败时间(UTC)',
+  `error_code` VARCHAR(64) NULL COMMENT '规范化失败原因码，无当前错误时为 NULL',
+  `error_message` VARCHAR(512) NULL COMMENT '脱敏错误摘要，不保存上游原始响应体，无当前错误时为 NULL',
+  `last_observed_at` DATETIME(3) NULL COMMENT '最近有效观测的开始时间(UTC)，用于阻止乱序覆盖，未观测时为 NULL',
+  `observation_source` VARCHAR(32) NULL COMMENT '观测来源：probe / invocation',
+  `observed_model_id` BIGINT UNSIGNED NULL COMMENT '观测实际使用的模型 ai_model.id',
+  `provider_config_version` BIGINT UNSIGNED NULL COMMENT '观测使用的接入点配置版本，未观测时为 NULL',
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '健康快照更新时间(UTC)，不更新配置表',
+  PRIMARY KEY (`provider_id`),
+  CONSTRAINT `fk_ai_provider_health_provider` FOREIGN KEY (`provider_id`) REFERENCES `ai_model_provider` (`id`),
+  CONSTRAINT `fk_ai_provider_health_model` FOREIGN KEY (`observed_model_id`) REFERENCES `ai_model` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='模型接入点最近健康观测。不缓存，无逻辑删除、public_id 或创建者字段';
 
 CREATE TABLE `tool_definition` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',

@@ -47,6 +47,33 @@ class LlmHttpClientTest {
         return server.url(path).toString();
     }
 
+    @Test
+    void getSendsHeadersWithoutBodyAndReturnsJson() throws InterruptedException {
+        server.enqueue(new MockResponse().setBody("{\"data\":[]}"));
+        assertThat(new LlmHttpClient().get(url("/v1/models"), Map.of("Authorization", "Bearer test")))
+                .isEqualTo("{\"data\":[]}");
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("GET");
+        assertThat(request.getPath()).isEqualTo("/v1/models");
+        assertThat(request.getHeader("Authorization")).isEqualTo("Bearer test");
+        assertThat(request.getHeader("Content-Type")).isNull();
+        assertThat(request.getBodySize()).isZero();
+    }
+
+    @Test
+    void getPreservesErrorClassificationAndTimeout() {
+        server.enqueue(new MockResponse().setResponseCode(401).setBody("sensitive-error"));
+        assertThatThrownBy(() -> new LlmHttpClient().get(url("/models"), Map.of()))
+                .isInstanceOfSatisfying(LlmApiException.class, exception -> {
+                    assertThat(exception.getKind()).isEqualTo(LlmErrorKind.AUTH_FAILED);
+                    assertThat(exception.getMessage()).doesNotContain("sensitive-error");
+                });
+        server.enqueue(new MockResponse().setBody("{}").setBodyDelay(1, TimeUnit.SECONDS));
+        assertThatThrownBy(() -> SHORT_TIMEOUT_CLIENT.get(url("/models"), Map.of()))
+                .isInstanceOfSatisfying(LlmApiException.class,
+                        exception -> assertThat(exception.getKind()).isEqualTo(LlmErrorKind.TIMEOUT));
+    }
+
     // ── 普通请求 ────────────────────────────────────────────────────
 
     @Test

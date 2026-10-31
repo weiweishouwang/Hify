@@ -92,7 +92,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Result<Void>> handleMessageNotReadable(HttpMessageNotReadableException e) {
         ErrorCode errorCode = ErrorCode.PARAM_ERROR;
-        log.warn("请求体解析失败, reason={}", e.getMostSpecificCause().getMessage());
+        // 解析异常原文可能包含 authConfig 中的密钥等输入值，日志只保留异常类型。
+        log.warn("请求体解析失败, reason={}", e.getMostSpecificCause().getClass().getSimpleName());
         return ResponseEntity.status(errorCode.getHttpStatus())
                 .body(Result.fail(errorCode, errorCode.getDefaultMessage() + ": 请求体格式错误"));
     }

@@ -22,8 +22,8 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  *
  * <p>按 CLAUDE.md §C2：队列必须有界（无界队列会 OOM），线程工厂必须带业务名，
- * 拒绝策略必须明确——两个池都用 {@code CallerRunsPolicy}，队列满了就让调用方线程自己跑，
- * 宁可慢一点也不丢任务。
+ * 拒绝策略必须明确。llmExecutor 使用 CallerRunsPolicy；asyncExecutor 使用 AbortPolicy，
+ * 调用方处理拒绝并延后任务，避免健康探测在队列满时反向阻塞调度线程。
  *
  * <p><b>注意</b>：注册了 {@code Executor} 类型的 bean 之后，Spring Boot 的
  * {@code TaskExecutionAutoConfiguration} 会因为 {@code @ConditionalOnMissingBean(Executor.class)}
@@ -96,6 +96,6 @@ public class ThreadPoolConfig {
                 TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(ASYNC_QUEUE_CAPACITY),
                 new NamedThreadFactory("async-"),
-                new ThreadPoolExecutor.CallerRunsPolicy());
+                new ThreadPoolExecutor.AbortPolicy());
     }
 }
