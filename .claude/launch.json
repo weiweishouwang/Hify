@@ -6,6 +6,30 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "hify-web", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "hify-provider-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "export HIFY_DB_HOST=127.0.0.1 HIFY_DB_PORT=3308 HIFY_REDIS_HOST=127.0.0.1 HIFY_REDIS_PORT=6380 HIFY_PG_HOST=127.0.0.1 HIFY_PG_PORT=5433; exec java -jar hify-app/target/hify-app-0.1.0-SNAPSHOT.jar --server.port=18080 --hify.ai.provider-health.enabled=false"],
+      "port": 18080
+    },
+    {
+      "name": "hify-provider-web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["VITE_API_PROXY_TARGET=http://localhost:18080", "npm", "--prefix", "hify-web", "run", "dev", "--", "--port", "5174", "--strictPort"],
+      "port": 5174
+    },
+    {
+      "name": "hify-tool-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "export HIFY_DB_HOST=127.0.0.1 HIFY_DB_PORT=3308 HIFY_REDIS_HOST=127.0.0.1 HIFY_REDIS_PORT=6380 HIFY_PG_HOST=127.0.0.1 HIFY_PG_PORT=5433; export HIFY_TOOL_ENCRYPTION_KEY=$(openssl rand -base64 32); exec java -jar hify-app/target/hify-app-0.1.0-SNAPSHOT.jar --server.port=18090 --hify.ai.provider-health.enabled=false"],
+      "port": 18090
+    },
+    {
+      "name": "hify-tool-web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["VITE_API_PROXY_TARGET=http://localhost:18090", "npm", "--prefix", "hify-web", "run", "dev", "--", "--port", "5175", "--strictPort"],
+      "port": 5175
     }
   ]
 }

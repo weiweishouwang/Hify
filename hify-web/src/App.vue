@@ -8,6 +8,7 @@ import {
   Fold,
   Setting,
   SwitchButton,
+  Tools,
   User,
 } from '@element-plus/icons-vue'
 import { NARROW_MEDIA, useMediaQuery } from '@/composables/useMediaQuery'
@@ -39,11 +40,12 @@ function toggleCollapsed(): void {
 }
 
 /**
- * 侧边栏菜单：三项，与 router/index.ts 里的三条业务路由一一对应。
+ * 侧边栏菜单：四项，与 router/index.ts 里的四条业务路由一一对应。
  * 加一项菜单要同时加一条路由，两处都要改。
  */
 const menus = [
   { path: '/models', title: '模型管理', icon: Setting },
+  { path: '/tools', title: '工具管理', icon: Tools },
   { path: '/agents', title: 'Agent 管理', icon: User },
   { path: '/chat', title: '对话', icon: ChatDotRound },
 ]

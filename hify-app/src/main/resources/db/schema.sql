@@ -169,9 +169,10 @@ CREATE TABLE `tool_definition` (
   `tool_key`    VARCHAR(128) NOT NULL DEFAULT ''                     COMMENT '工具标识，同来源内唯一',
   `name`        VARCHAR(128) NOT NULL DEFAULT ''                     COMMENT '工具名',
   `description` TEXT         NULL                                   COMMENT '工具描述，给模型看的',
-  `schema`      JSON         NULL                                   COMMENT '入参 JSON Schema',
-  `config`      JSON         NULL                                   COMMENT '来源配置：http 的地址与请求头 / mcp 的 server 引用',
+  `input_schema` JSON      NULL                                   COMMENT '入参 JSON Schema，给模型看，不参与执行期映射',
+  `config`      JSON         NULL                                   COMMENT '来源配置，按 source_type 分化：http 的地址/方法/请求头（敏感头值密文）/ mcp 的 server 引用 / builtin 的 providerBean',
   `enabled`     TINYINT       NOT NULL DEFAULT 1                     COMMENT '是否启用：0 否 / 1 是',
+  `config_version` BIGINT UNSIGNED NOT NULL DEFAULT 1               COMMENT '工具配置版本，由业务层递增，用于乐观锁',
   `created_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间(UTC)',
   `updated_at` DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间(UTC)',
   `created_by` BIGINT UNSIGNED NULL                                 COMMENT '创建者 user.id',
@@ -179,9 +180,10 @@ CREATE TABLE `tool_definition` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_public_id` (`public_id`),
   UNIQUE KEY `uk_tool_key` (`source_type`, `tool_key`),
-  KEY `idx_created_by` (`created_by`)
+  KEY `idx_created_by` (`created_by`),
+  KEY `idx_source_type_enabled` (`source_type`, `enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='工具定义。内置工具代码注册，自定义 HTTP 工具与 MCP 工具落库';
+  COMMENT='工具定义。统一目录：三种来源都落库，内置与 MCP 的行由同步机制托管，用户只手工创建 http 来源';
 
 CREATE TABLE `mcp_server` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT              COMMENT '主键',

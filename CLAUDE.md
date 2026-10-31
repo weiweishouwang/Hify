@@ -53,7 +53,7 @@
 |---|---|---|---|
 | `hify-shared` | 异常体系、错误码、当前用户上下文、trace id；平台域的用户与密钥 | — | `user`、`api_key` |
 | `hify-ai` | 模型接入点管理 + 模型调用（chat / embedding / 流式补全） | shared | `ai_model_provider`、`ai_model` |
-| `hify-tool` | Tool 抽象 + `ToolProvider` SPI + 内置与 HTTP 两种来源 | shared | `tool_definition` |
+| `hify-tool` | Tool 抽象 + `ToolProvider` SPI + 内置 / HTTP / MCP 三种来源的统一目录 | shared | `tool_definition` |
 | `hify-knowledge` | TXT 上传、固定分块、embedding、向量检索 | shared, ai | `kb_knowledge_base`、`kb_document`（PG: `vec_chunk`） |
 | `hify-mcp` | MCP client、server 配置管理、MCP 来源的 ToolProvider | shared, tool | `mcp_server` |
 | `hify-agent` | Agent 配置的存取与组装 | shared, ai, tool, knowledge | `ai_agent`（`ai_agent_version` 可选，一期不做） |
@@ -110,7 +110,7 @@ com.hify.<module>/
 | `mapper` | 数据访问 | 只放 Mapper 与自定义 SQL；**禁止**业务逻辑；SQL 里的表名必须以本模块表前缀开头 |
 | `entity` | 数据库映射 | 只在 `internal` 内使用；**禁止**出现在 `api` 包、作为 controller 返回值、作为跨模块方法参数 |
 | `converter` | DO ↔ DTO | 转换逻辑不得堆在 service 里 |
-| `spi` | 扩展点接口 | **放在消费方的 `api` 包**（见 §3.2 依赖倒置） |
+| `spi` | 扩展点接口 | **放在消费方的 `api` 包**（见 §3.2 依赖倒置）；`hify-ai` 的 `internal/spi` 放模块内部的协议适配器（入参是 DO，不能进 `api`） |
 
 **`api` 包的未来形态**：现在 `api` 是同一个 artifact 内的一个包。将来某个模块拆成独立服务时，`api` 包会**原样复制**过去，成为 RPC 契约的来源——所以它的接口签名必须「远程调用友好」（§3.2）。**这是「模块内部不用动、只改传输层」这个承诺的兑现前提，改接口签名前先想清楚这一点。**
 
@@ -213,7 +213,7 @@ MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机
 
 **双库的数据分布**（双库架构最易误解的地方）：知识库的**文档元数据在 MySQL**（`kb_document` 承载状态机），**分段正文与向量在 PostgreSQL**（`vec_chunk`）。两者靠 `kb_id` / `doc_id` 逻辑关联，跨库无外键。
 
-**不落库的**：内置工具（代码注册）、MCP 工具（`tools/list` 动态发现，缓存在应用层）、知识库分段正文（只在 `vec_chunk`）。
+**不落库的**：知识库分段正文（只在 `vec_chunk`）。**内置工具与 MCP 工具落库** —— `tool_definition` 是三种来源的统一目录，内置与 MCP 的行由同步机制托管（见 §四「工具目录是统一目录」）。
 
 **关系**（❌ 表示不建外键，只存 id）
 
@@ -444,6 +444,10 @@ docker compose down -v           # 停并清空数据
 
 **通用**：引擎 InnoDB；字符集 `utf8mb4` / `utf8mb4_0900_ai_ci`；主键 `BIGINT UNSIGNED AUTO_INCREMENT`；对外 ID `CHAR(26)` ULID（`public_id` + `uk_public_id`，只给对外暴露路径的表）；时间 `DATETIME(3)` 存 UTC（**不用 `TIMESTAMP`**）；金额 `DECIMAL(18,4)`；配置用 MySQL 8 原生 `JSON`；**禁止 `ENUM`**；**禁止外键级联删除**；**禁止 `SELECT *`**；所有字段 NOT NULL 优先；单表二级索引 ≤ 5 个；联合索引总长 ≤ 3072 字节。
 
+**列名避开 MySQL 保留字** —— MyBatis-Plus 生成的 SQL **不给列名加反引号**，列名撞上保留字就是运行期语法错误。已踩：`tool_definition.schema`（`SCHEMA` 是保留字）→ 改成 `input_schema`。建表时列名要么避开保留字，要么确认 ORM 会加引号。
+
+**软删行占不占名字，要分开看** —— 数据库唯一键（如 `uk_tool_key`）覆盖软删行，是硬约束：删掉的记录标识不能再用，报错时要说清楚（含「包括已删除记录」）。但**服务层的名称唯一性通常只看活着的行** —— 软删的记录已经绑不到 Agent 上，不该继续占名字。两种规则混用会出怪事：删掉一个 HTTP 工具后，同名的内置工具反而同步不进来了（同步被「名字被占用」挡掉）。
+
 **分区**：
 - **只有事件流表分区**（`conv_message` / `conv_run` / `conv_message_citation` / `wf_run`），**从建表起就分区**，按月 + 一个 `pmax` 兜底分区
 - `conv_session` 与所有配置表**不分区** —— 分区列必须在每个 UNIQUE 键中，分区表不能有独立的 `uk_public_id`，而 `conv_session` 需要 public_id 全局唯一（分享链接）
@@ -549,10 +553,12 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **不引入 WebFlux** —— MyBatis-Plus 是 JDBC 阻塞，WebFlux 下要用 R2DBC 而 MP 的 R2DBC 支持不成熟。**替代方案：WebFlux + R2DBC 或 Spring Data R2DBC**，代价是重做数据层。
 - **调上游 LLM 用阻塞式客户端 + 专用线程池，不用响应式**（2026-10-30 定）—— `shared.http.LlmHttpClient`（`post()` 走 RestTemplate，`stream()` 走 OkHttp 自己解析 SSE 帧）阻塞，调用方提交到 `llmExecutor`。**替代方案：WebClient + Reactor Netty** —— 每 provider 一个 `ConnectionProvider`、`Flux.timeout()` 表达 chunk 空闲超时、背压，这些语义更贴合流式场景，代价是多一套 Reactor 编程模型、异常传播要绕着写，且与「不引入 WebFlux」的取向冲突更大。选阻塞式的理由：超时与连接语义都直白，适配器就是普通 Java，异常直接往外抛。**代价：并发上限由 `llmExecutor` 的 50 个线程决定，而不是每 provider 的 `maxConnections`；且 `CallerRunsPolicy` 在队列满时会让提交方（多半是 Tomcat 线程）自己跑任务**
 - **LLM 适配器一期做 3 个：OpenAI 兼容 / Anthropic Messages / Ollama 原生** —— 前两个覆盖绝大多数用量，供应商名单靠 base_url 拉长；**Ollama 单写原生而不是蹭 OpenAI 兼容层**，因为只有原生能透传 `options.num_ctx`（兼容层忽略它，模型按 4096 上下文加载），且原生的 tool 行为更可靠。**代价**：Ollama 原生是 NDJSON 不是 SSE，多一套分帧与字段归一化。**Gemini 原生放二期** —— Google 的 OpenAI 兼容端点能先顶上
+- **协议差异用策略模式收敛，不写 if-else 分发** —— `hify-ai/internal/spi/ProviderAdapter` 定义 `testConnection(provider)` 与 `listModels(provider)`，实现按协议分文件（`OpenAiAdapter` / `AnthropicAdapter` / `OllamaAdapter`，`OpenAiCompatibleAdapter` 直接继承 `OpenAiAdapter` 不重复代码），`ProviderAdapterFactory` 按 `provider.type` 取实例。**新增协议只加适配器并登记工厂，调用方不动**。接口放在 `internal/spi` 而不是 `api`：入参是数据对象，契约层不许出现数据对象
 - **模型接入点与模型分两张表** —— **连通性测试的粒度决定表的粒度**：端点能通不代表某个模型名在该账号下可用，一张表表达不了这两件事。
+- **工具目录是统一目录，三种来源都落 `tool_definition`** —— 内置、HTTP、MCP 三类工具各占一行，靠 `source_type` 区分。**决定了什么**：Agent 绑定工具时只存工具 id，不需要为内置工具另发明一套标识；工具的启停状态有地方落。**为什么**：`ai_agent.tool_ids` 是「工具 ID 数组」，若内置工具不落库就没有 row id，`tool_ids` 会退化成字符串数组，与 `knowledge_ids` 不一致。**代价**：内置与 MCP 的行是代码与上游的镜像，需要同步机制托管（幂等 upsert、消失下架、名字撞车跳过）；用户不能手工改删这两类行。**替代方案**：只存 HTTP 来源（已被否决）。
 
 ### 数据模型
-- **明确哪些东西不落库** —— 内置工具代码注册、MCP 工具动态发现、分段正文只在 PG。避免把易变数据塞进数据库。
+- **明确哪些东西不落库** —— 分段正文只在 PG。避免把易变数据塞进数据库。**（例外：`tool_definition` 是统一目录，内置与 MCP 工具也落库，见下面的「工具目录」条目。）**
 - **主键与对外 ID 分离** —— 随机 UUID 做聚簇主键会造成 B+tree 碎片与 buffer pool 命中率下降；ULID 有序、紧凑、不可枚举（分享链接防遍历猜 id）。
 - **多对多用 JSON 数组不建关联表** —— 反向引用不落库，工具被删除时不会有孤儿关联行。代价是无法 JOIN、无法保证引用有效性，靠多值索引兜住性能。
 - **引用关系存文本快照** —— 知识库重新索引后 chunk id 会变，历史对话的溯源不能依赖 PG 还在。

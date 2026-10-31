@@ -1,7 +1,11 @@
 # hify-tool 模块设计规格
 
-> 阶段 0（咨询模式）的产出物。**本文档未经确认前不建表、不写代码。**
-> 日期：2026-10-31 · 状态：待确认
+> 阶段 0（咨询模式）的产出物。日期：2026-10-31 · 状态：已确认，进入阶段 1
+>
+> **编号约定**：本文里 `§1.2` / `§2.4` / `§3.5` 这类**阿拉伯数字**编号指 **CLAUDE.md** 的章节；
+> `§L6` / `§M6` / `§M7` / `§M8` / `§M10` 这类**字母数字混合**编号指
+> `docs/superpowers/specs/2026-10-29-hify-code-organization.md` 的条目；
+> `§一` / `§二` 指本文自身的章节。
 
 ---
 
@@ -105,13 +109,17 @@ ALTER TABLE `tool_definition`
 
 **索引**：新增 `idx_source_type_enabled (source_type, enabled)`，供目录列表按来源筛选并过滤启停。
 
+**列名 `schema` 要改成 `input_schema`**（实现期发现）：`schema` 是 MySQL 8 的保留字，而 MyBatis-Plus 生成的 INSERT / SELECT 不加反引号，直接语法错误 —— `BadSqlGrammarException: ... near 'schema, config, enabled, ...'`。列名改成 `input_schema`，Java 字段仍叫 `schema`（对外契约不变）。
+
 ### 3.2 `config` 列的结构（按 `source_type` 分化）
+
+入参 schema 单独一列 `input_schema`（JSON），不塞进 `config` —— 它对三种来源都一样，放 `config` 里会让每个来源都带一个用不上的键。
 
 | source_type | `config` JSON 结构 | 敏感字段 |
 |---|---|---|
-| `http` | `{"url": "...", "method": "GET\|POST", "headers": {...}, "timeoutMs": 10000}` | `headers` 里的敏感值 |
+| `http` | `{"url": "...", "method": "GET\|POST", "headers": {...}, "timeoutMs": 30000}` | `headers` 里的敏感值 |
 | `mcp` | `{"mcpServerPublicId": "...", "mcpToolName": "..."}` | 无 |
-| `builtin` | `{"providerBean": "builtinTimeProvider"}` | 无 |
+| `builtin` | `{"providerBean": "BuiltinTimeTool"}` | 无 |
 
 `headers` 的**敏感值逐个加密**，密文以 `enc:v1:` 前缀标记：
 
@@ -132,14 +140,17 @@ ALTER TABLE `tool_definition`
 |---|---|---|
 | `(source_type, tool_key)` 唯一 | 数据库唯一键（已有） | 工具的稳定标识 |
 | `public_id` 唯一 | 数据库唯一键（已有） | 对外 ID |
-| 工具 `name` 全局唯一 | **服务层校验**（查软删行），不加数据库唯一键 | 内置与 MCP 的 name 由代码 / 上游决定，加了唯一键会与目录同步的 upsert 打架 |
-| `tool_key` 软删后不可复用 | 服务层校验时包含软删行，报错说清楚 | `uk_tool_key` 覆盖软删行 —— 与 Provider 的 `findIdByName` 同一个坑，处理方式一致 |
+| 工具 `name` 全局唯一 | **服务层校验**，不加数据库唯一键 | 内置与 MCP 的 name 由代码 / 上游决定，加了唯一键会与目录同步的 upsert 打架 |
+| `tool_key` 软删后不可复用 | 服务层校验时**包含**软删行，报错说清楚 | `uk_tool_key` 覆盖软删行 —— 这是数据库硬约束，与 Provider 的 `findIdByName` 同一个坑 |
+| 工具 `name` 软删后**可**复用 | 服务层校验时**只看未删除行** | 软删除的工具已经绑不到 Agent 上，不会造成 function calling 撞名，不该继续占着名字 |
 
-**创建 / 编辑 HTTP 工具时**：`name` 必须与**所有来源**的现有工具名不冲突（含 builtin / mcp），冲突报 40900「工具名已被占用（包括已删除记录）」。
+**名称校验的这条差异是实现期改的**：最初按 Provider 的做法把软删行也算进名称占用，结果是删掉一个 HTTP 工具后，同名的内置工具再也同步不进来（同步时被「名字被占用」挡掉）。名称的唯一性只对**活着的**工具有意义。
 
-**目录同步时**：若 MCP 工具名与已有行撞名，该新行落库但 `enabled=0`，同时记 warn 日志 —— 不阻断整批同步。
+**创建 / 编辑 HTTP 工具时**：`name` 必须与**所有来源**的现有工具名不冲突（含 builtin / mcp），冲突报 40900「工具名已被占用」。
 
-**软删 + 唯一键**：删除一个 HTTP 工具后，它的 `tool_key` 不能再建（唯一键覆盖软删行）。报错文案必须说明这一点，否则用户会以为是 bug。
+**目录同步时**：若 MCP / 内置工具名与已有行撞名，该工具**跳过同步**并记 warn 日志 —— 不写进去，避免表里出现两个同名工具让 function calling 撞名。
+
+**软删 + 唯一键**：删除一个 HTTP 工具后，它的 `tool_key` 不能再建（唯一键覆盖软删行）。报错文案必须说明这一点（"工具标识已被占用（包括已删除记录）"），否则用户会以为是 bug。
 
 ### 3.4 生命周期
 
@@ -149,7 +160,9 @@ ALTER TABLE `tool_definition`
 | `builtin` | 代码注册，启动/定时同步 upsert | 同步时发现代码里没有 → `enabled=0` | 不提供删除接口（代码管） |
 | `mcp` | `tools/list` 同步 upsert | 同步时消失 → `enabled=0` | 不提供删除接口（上游管） |
 
-**builtin / mcp 来源的行不提供用户删除入口** —— 它们由同步机制托管，用户删了下次同步又回来。
+**builtin / mcp 来源的行不提供用户删除与编辑入口** —— 它们由同步机制托管，用户删了下次同步又回来；服务层对这两类来源的 update / delete 直接返回 40900。
+
+**HTTP 来源的行同步器不碰**：http 来源的 `listTools()` 返回空列表，同步器跳过它 —— 既不新建也不下架，用户的启停状态不会被同步覆盖。
 
 ---
 
