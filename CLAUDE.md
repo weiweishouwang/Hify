@@ -481,7 +481,10 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
   ```
   **不要靠调高 CPU limit 来解决线程池问题** —— CPU limit 是资源决策，线程池是正确性决策
 - **上游是阻塞的**（`LlmHttpClient` 跑在 `llmExecutor` 上，见 §3.5）→ **往浏览器写帧的线程必须和 `llmExecutor` 分开**：一个慢客户端的阻塞写如果占住 `llmExecutor` 线程，就等于吃掉一个 LLM 并发名额
+- **SSE 写出用独立的线程池**（`hify-conversation` 的 `sseWriterExecutor`）—— 核心 48 / 最大 200 / `SynchronousQueue`（队列长度 0，超核心线程数就立刻新建线程，与 `boundedElastic` 同一个弹性语义）/ 拒绝策略 `AbortPolicy`（超 200 条并发流时**快速失败**，不能用 `CallerRuns` —— 那会让写出回落到编排线程上，等于绕回要避免的耦合）
+- **编排线程与写出线程之间用有界队列交接，满了就背压（阻塞等待）** —— 丢弃事件会丢掉模型输出，无界缓冲会把内存打满；背压是唯一两头都不吃亏的选项
 - **必须显式设长超时**：Tomcat `asyncTimeout` 默认 30s，会掐断 60s 的生成。`spring.mvc.async.request-timeout: 30m` 或 `new SseEmitter(180_000L)`
+- **SSE 的错误必须在响应开始之前返回** —— HTTP 状态码在响应头发出的那一刻就定了。controller 直接返回 `SseEmitter` 的话，后面的编排（校验资源、调模型）都发生在流开始之后，那时候再抛异常只能变成流里的一帧 `error`，状态码改不了。**所以资源存在性与归属要在返回 emitter 之前校验完**（校验失败时 emitter 从没被返回给框架，异常正常走全局处理器 → 客户端拿到标准的 404 JSON）
 - **必须发心跳**（15–30s）：保活、检测死客户端、防止中间代理掐断空闲连接
 - `ServerSentEvent.data()` **传对象让 Jackson 序列化**，不要传裸 String（含换行会破坏 SSE 分帧）
 - `SseEmitter` 不是线程安全的，不能并发 `send()`；多来源合并用 `Sinks.Many`
@@ -552,6 +555,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **扩展点用依赖倒置** —— `tool` 既是工具提供者又是来源的消费者，让 `tool` 依赖 `mcp` 会成环。
 - **跨模块事件不引入 MQ** —— 四个事件都是低频的「进程内缓存失效」信号，拆成独立服务时改用 Redis + TTL 刷新即可。**只有出现真正的跨进程业务契约时才引 MQ。**
 - **前端不进 Maven reactor** —— `hify-web/` 是独立的 npm 工程，产物是静态文件交给 nginx 托管。理由：前后端的依赖体系、发布节奏、CI 缓存策略都不同，塞进同一个 reactor 只会让 `mvn verify` 变慢，而且前端构建失败不该挡住后端发版。**替代方案：前端构建产物塞进 `hify-app` 的 jar**（省一次部署，但把两套工具链焊死在一个生命周期里）。
+- **一期没有认证时，会话归属落到内置的「开发用户」** —— `conv_session.user_id` 是 NOT NULL 外键指向 `user.id`，而认证方案还没定（§五）、登录接口不存在。**做法**：`hify-shared` 提供 `CurrentUserService.currentUserId()` —— 有登录上下文（`CurrentUserHolder` 里有人）就用那个人，没有就落到一个内置的 `username='developer'` 的用户（不存在就幂等创建）。**为什么**：把 `user_id` 改成可空等于回避「会话是谁的」这个问题；在 conversation 模块直接查 `user` 表违反「跨模块只走 api 包」；自己实现登录等于替用户把认证方案定死。**代价**：一期所有会话看起来属于同一个人。**将来接上登录只要让登录拦截器往 `CurrentUserHolder` 里塞用户，这里一行都不用改**
 
 ### 技术选型
 - **Spring Boot + MyBatis-Plus + Vue3/Element Plus** —— 工程化成熟度让一个人能快速交付完整系统。代价：相比 FastAPI 多写约 2–4 天基础设施代码（统一异常体系、事务边界规范、Security 自拼），换来 CRUD 效率与管理后台开发速度。
@@ -562,6 +566,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **MCP 工具用「服务标识:上游工具名」做工具标识** —— **决定了什么**：`tool_definition.tool_key` 取 `<服务 publicId>:<上游工具名>`。**为什么**：不同 MCP 服务可能提供同名工具，标识必须全局唯一；前缀还让调用时不必反查目录就知道该连哪个服务。**代价**：标识变长（26 + 1 + 工具名），`tool_key` 是 VARCHAR(128) 够用。**替代方案**：只存上游工具名（会撞名）。
 - **目录同步的「空列表」有两种含义，由 provider 自己声明** —— `ToolProvider.managesDirectoryRows()`：true 表示「列表为空 = 工具全部下架」（内置、MCP），false 表示「不由 provider 发现」（HTTP 工具由用户直接创建）。**为什么**：不区分的话，删掉最后一个 MCP 服务后它的工具行会永远留在目录里、且是启用状态 —— 目录里留着调不通的工具。**代价**：SPI 多一个方法，provider 实现要想清楚自己的空列表意味着什么。
 - **协议差异用策略模式收敛，不写 if-else 分发** —— `hify-ai/internal/spi/ProviderAdapter` 定义 `testConnection(provider)` 与 `listModels(provider)`，实现按协议分文件（`OpenAiAdapter` / `AnthropicAdapter` / `OllamaAdapter`，`OpenAiCompatibleAdapter` 直接继承 `OpenAiAdapter` 不重复代码），`ProviderAdapterFactory` 按 `provider.type` 取实例。**新增协议只加适配器并登记工厂，调用方不动**。接口放在 `internal/spi` 而不是 `api`：入参是数据对象，契约层不许出现数据对象
+- **对话协议也用同一套策略模式** —— `hify-ai/internal/spi/ChatProtocolAdapter` 定义 `stream(provider, modelName, request, listener)`，`OpenAiChatAdapter` / `AnthropicChatAdapter` / `OllamaChatAdapter` 各自实现，`ChatAdapterFactory` 按协议取实例。**决定了什么**：三套协议的请求体形状、工具定义形状、工具调用形状、流式分帧方式全都不同（OpenAI 是 SSE + `tool_calls`，Anthropic 是 SSE 具名事件 + `tool_use` 块、工具结果放在 **user 消息**里，Ollama 是 **NDJSON** 一行一帧），全在适配器里收敛，编排层只认统一的 `ChatListener` 回调。**代价**：`ai` 模块明显变大 —— 这是对的，协议差异属于「能力层」的知识，放在编排层意味着 workflow 要再拼一遍。**替代方案**：conversation 直接调 `shared.http.LlmHttpClient` 自己拼协议（已否决）
+- **模型的函数名必须是 ASCII 且由「工具标识」派生** —— function calling 的函数名要匹配 `^[a-zA-Z0-9_-]{1,64}$`（OpenAI 与 Anthropic 都要求），而工具名是用户随手起的、可能是中文。**函数名从 `来源:工具标识` 派生而不是从显示名派生** —— 显示名用户随时会改，改了函数名就变了，历史消息里的函数名会对不上。清洗规则：非 `[A-Za-z0-9_-]` 折成 `_`、合并连续下划线、首尾去掉、数字开头补 `t_`、长度截到 54（留位给去重后缀）、同名加 `_2` 后缀。**代价**：中文工具名在模型那边是 `tool`、`tool_2` 这种看不出所以然的名字 —— 但描述里写着它是干什么的，模型靠描述判断
 - **模型接入点与模型分两张表** —— **连通性测试的粒度决定表的粒度**：端点能通不代表某个模型名在该账号下可用，一张表表达不了这两件事。
 - **工具目录是统一目录，三种来源都落 `tool_definition`** —— 内置、HTTP、MCP 三类工具各占一行，靠 `source_type` 区分。**决定了什么**：Agent 绑定工具时只存工具 id，不需要为内置工具另发明一套标识；工具的启停状态有地方落。**为什么**：`ai_agent.tool_ids` 是「工具 ID 数组」，若内置工具不落库就没有 row id，`tool_ids` 会退化成字符串数组，与 `knowledge_ids` 不一致。**代价**：内置与 MCP 的行是代码与上游的镜像，需要同步机制托管（幂等 upsert、消失下架、名字撞车跳过）；用户不能手工改删这两类行。**替代方案**：只存 HTTP 来源（已被否决）。
 
@@ -573,6 +579,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **Agent 的参数区只认三个已知参数**（`temperature` / `max_tokens` / `top_p`）—— **为什么**：上游对不认识的参数是**静默丢弃**而不是报错（§3.5），放开任意参数等于允许用户填一个上游根本不认的值，然后困惑于「为什么没生效」。**代价**：想加新参数要改代码。**替代方案**：任意 `Map`（已被否决）。
 - **Agent 状态三态：`draft` / `published` / `disabled`** —— 一期不做发布快照（`ai_agent_version` 保留不用），所以「发布」只是翻状态，**没有版本概念，改完直接生效**。编排层只接受 `published`。**代价**：多一步发布，新建默认 `draft`，对话页选不到 —— 列表页要给状态一个醒目的标签。
 - **引用关系存文本快照** —— 知识库重新索引后 chunk id 会变，历史对话的溯源不能依赖 PG 还在。
+- **工具调用消息存 JSON 正文，不加列** —— `conv_message` 已经有 `content_type`（text / markdown / json），工具消息的正文存一段 JSON（`{toolCallId, name, toolKey, arguments, result, error}`）。**为什么**：事件流表是分区表，加列要重建整张表 —— 能不加就不加。**出接口时把工具明细折叠进前一条助手消息**（工具调用是助手那一轮的一部分，界面上要画成助手消息底下的卡片，不是一条独立消息）
 - **用户与 API Key 归 `hify-shared`** —— 只有 2 张表，单开 Maven 模块不划算；用户域长大后再独立成模块，届时是纯搬迁。
 - **API Key 是用户级而非应用级** —— 用户级保留调用者身份做审计；应用级会让「谁调的」退化成「哪个共享 key 调的」。
 
