@@ -26,4 +26,17 @@ public interface ModelMapper extends BaseMapper<ModelDO> {
     @ConstructorArgs({@Arg(column = "provider_id", javaType = Long.class),
             @Arg(column = "enabled_model_count", javaType = Long.class)})
     List<ProviderModelCount> countEnabledByProviderIds(@Param("providerIds") List<Long> providerIds);
+
+    /**
+     * 按接入点与上游模型标识查主键。
+     *
+     * <p>唯一键 {@code uk_provider_model} 覆盖软删除行，检查占用时不能使用自动附加
+     * {@code deleted = 0} 的查询。
+     */
+    @Select("SELECT id FROM ai_model WHERE provider_id = #{providerId} AND model_name = #{modelName} LIMIT 1")
+    Long findIdByProviderAndModel(@Param("providerId") Long providerId, @Param("modelName") String modelName);
+
+    /** 某接入点下所有未删除行的上游模型标识，用于算出哪些模型上游不再提供、该停用。 */
+    @Select("SELECT model_name FROM ai_model WHERE provider_id = #{providerId} AND deleted = 0")
+    List<String> listModelNamesByProvider(@Param("providerId") Long providerId);
 }

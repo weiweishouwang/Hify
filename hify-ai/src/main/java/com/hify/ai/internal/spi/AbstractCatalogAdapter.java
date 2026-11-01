@@ -59,6 +59,70 @@ abstract class AbstractCatalogAdapter implements ProviderAdapter {
         return identifiers;
     }
 
+    /**
+     * 默认不支持 embedding。
+     *
+     * <p>Anthropic 没有 embedding 接口 —— 这是协议事实，不是配置错误。
+     * 支持 embedding 的协议（openai / ollama）各自覆写。
+     */
+    @Override
+    public List<float[]> embed(ModelProviderDO provider, String modelName, List<String> texts) {
+        throw ProviderConfigSupport.invalid(type() + " 协议不支持 embedding");
+    }
+
+    /** 解析 OpenAI 形状的 embedding 响应：{@code data[].embedding}。 */
+    protected List<float[]> parseEmbeddingArray(String response, int expected) {
+        JsonNode root = readJson(response, "embedding 响应不是有效 JSON");
+        JsonNode data = root.path("data");
+        if (!data.isArray()) {
+            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, "embedding 响应格式无效");
+        }
+        List<float[]> vectors = new ArrayList<>();
+        for (JsonNode item : data) {
+            JsonNode embedding = item.path("embedding");
+            if (!embedding.isArray() || embedding.isEmpty()) {
+                throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, "embedding 响应缺少向量");
+            }
+            float[] vector = new float[embedding.size()];
+            for (int index = 0; index < embedding.size(); index++) {
+                vector[index] = (float) embedding.get(index).asDouble();
+            }
+            vectors.add(vector);
+        }
+        if (vectors.size() != expected) {
+            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR,
+                    "embedding 响应条数与请求不一致: 期望 " + expected + "，实际 " + vectors.size());
+        }
+        return vectors;
+    }
+
+    /** 解析单个向量：{@code embedding} 数组。 */
+    protected float[] parseSingleEmbedding(String response) {
+        JsonNode root = readJson(response, "embedding 响应不是有效 JSON");
+        JsonNode embedding = root.path("embedding");
+        if (!embedding.isArray() || embedding.isEmpty()) {
+            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, "embedding 响应缺少向量");
+        }
+        float[] vector = new float[embedding.size()];
+        for (int index = 0; index < embedding.size(); index++) {
+            vector[index] = (float) embedding.get(index).asDouble();
+        }
+        return vector;
+    }
+
+    /** 解析响应体为 JSON 对象；结构不对一律归为上游响应无效。 */
+    protected JsonNode readJson(String response, String message) {
+        try {
+            JsonNode root = response == null ? null : json.mapper().readTree(response);
+            if (root == null || !root.isObject()) {
+                throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, message);
+            }
+            return root;
+        } catch (JsonProcessingException exception) {
+            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, message, exception);
+        }
+    }
+
     /** 取一次目录响应并校验结构，失败一律归为上游响应无效。 */
     protected JsonNode fetchCatalog(ModelProviderDO provider) {
         String base = ProviderConfigSupport.baseUrl(provider.getBaseUrl());

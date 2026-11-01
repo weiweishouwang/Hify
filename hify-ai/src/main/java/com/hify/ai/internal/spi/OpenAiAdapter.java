@@ -6,6 +6,8 @@ import com.hify.ai.internal.service.ProviderConfigSupport;
 import com.hify.shared.http.LlmHttpClient;
 import com.hify.shared.json.JsonUtils;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,5 +47,22 @@ public class OpenAiAdapter extends AbstractCatalogAdapter {
     protected Map<String, String> authHeaders(ModelProviderDO provider) {
         String key = decryptKey(authConfig(provider).get(ProviderConfigSupport.API_KEY));
         return key == null ? Map.of() : Map.of("Authorization", "Bearer " + key);
+    }
+
+    /**
+     * OpenAI 形状的向量化：{@code POST {base}/embeddings}，
+     * 请求体 {@code {"model": ..., "input": [...]}}，响应 {@code data[].embedding}。
+     */
+    @Override
+    public List<float[]> embed(ModelProviderDO provider, String modelName, List<String> texts) {
+        if (texts == null || texts.isEmpty()) {
+            return List.of();
+        }
+        String base = ProviderConfigSupport.baseUrl(provider.getBaseUrl());
+        Map<String, String> headers = new LinkedHashMap<>(authHeaders(provider));
+        headers.put("Content-Type", "application/json; charset=utf-8");
+        String body = json.toJson(Map.of("model", modelName, "input", texts));
+        String response = http.post(base + "/embeddings", headers, body);
+        return parseEmbeddingArray(response, texts.size());
     }
 }
