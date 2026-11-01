@@ -3,7 +3,7 @@ package com.hify.tool.internal.converter;
 import com.hify.tool.api.ToolDetailResp;
 import com.hify.tool.api.ToolSummaryResp;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
-import com.hify.tool.internal.security.ToolHeaderCipher;
+import com.hify.shared.crypto.SensitiveHeaderCipher;
 import com.hify.tool.internal.service.ToolConfig;
 import org.springframework.stereotype.Component;
 
@@ -13,9 +13,9 @@ import java.util.Map;
 @Component
 public class ToolConverter {
 
-    private final ToolHeaderCipher headerCipher;
+    private final SensitiveHeaderCipher headerCipher;
 
-    public ToolConverter(ToolHeaderCipher headerCipher) {
+    public ToolConverter(SensitiveHeaderCipher headerCipher) {
         this.headerCipher = headerCipher;
     }
 

@@ -17,7 +17,7 @@ import com.hify.tool.api.ToolUpdateReq;
 import com.hify.tool.internal.converter.ToolConverter;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
 import com.hify.tool.internal.mapper.ToolDefinitionMapper;
-import com.hify.tool.internal.security.ToolHeaderCipher;
+import com.hify.shared.crypto.SensitiveHeaderCipher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,11 +45,11 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
 
     private final ToolDefinitionMapper tools;
     private final ToolConverter converter;
-    private final ToolHeaderCipher headerCipher;
+    private final SensitiveHeaderCipher headerCipher;
     private final ToolSyncService syncService;
 
     public ToolDefinitionServiceImpl(ToolDefinitionMapper tools, ToolConverter converter,
-                                     ToolHeaderCipher headerCipher, ToolSyncService syncService) {
+                                     SensitiveHeaderCipher headerCipher, ToolSyncService syncService) {
         this.tools = tools;
         this.converter = converter;
         this.headerCipher = headerCipher;

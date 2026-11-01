@@ -1,8 +1,6 @@
-package com.hify.tool.internal.security;
+package com.hify.shared.crypto;
 
-import com.hify.shared.crypto.CredentialCipher;
 import com.hify.shared.exception.BizException;
-import com.hify.tool.api.ToolDetailResp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,15 +13,15 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 请求头凭据的加密、脱敏与合并规则。 */
-class ToolHeaderCipherTest {
+/** 敏感请求头的加密、脱敏与合并规则。tool 与 mcp 两个模块共用。 */
+class SensitiveHeaderCipherTest {
 
-    private ToolHeaderCipher cipher;
+    private SensitiveHeaderCipher cipher;
 
     @BeforeEach
     void setUp() {
-        cipher = new ToolHeaderCipher(new CredentialCipher(
-                Base64.getEncoder().encodeToString(new byte[32]), "tool-credential-v1"));
+        cipher = new SensitiveHeaderCipher(new CredentialCipher(
+                Base64.getEncoder().encodeToString(new byte[32]), "hify-credential-v1"));
     }
 
     @ParameterizedTest
@@ -64,7 +62,7 @@ class ToolHeaderCipherTest {
                 "Authorization", "Bearer secret-token"));
 
         Map<String, String> masked = cipher.maskHeaders(stored);
-        assertThat(masked.get("Authorization")).isEqualTo(ToolDetailResp.MASKED_VALUE);
+        assertThat(masked.get("Authorization")).isEqualTo(SensitiveHeaderCipher.MASKED_VALUE);
         assertThat(masked.get("Content-Type")).isEqualTo("application/json");
         assertThat(masked.toString()).doesNotContain("secret-token");
     }
@@ -77,7 +75,7 @@ class ToolHeaderCipherTest {
                 "X-Trace", "keep-me"));
 
         Map<String, Object> merged = cipher.mergeHeaders(stored, Map.of(
-                "Authorization", ToolDetailResp.MASKED_VALUE,
+                "Authorization", SensitiveHeaderCipher.MASKED_VALUE,
                 "X-Trace", "new-value"));
 
         assertThat(merged.get("Authorization")).isEqualTo(stored.get("Authorization"));
@@ -91,7 +89,7 @@ class ToolHeaderCipherTest {
     @Test
     @DisplayName("密钥缺失时拒绝加密，不回退明文")
     void missingKeyFailsClosed() {
-        ToolHeaderCipher noKey = new ToolHeaderCipher(new CredentialCipher("", "tool-credential-v1"));
+        SensitiveHeaderCipher noKey = new SensitiveHeaderCipher(new CredentialCipher("", "hify-credential-v1"));
         assertThatThrownBy(() -> noKey.encryptHeaders(Map.of("Authorization", "Bearer x")))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("加密密钥");

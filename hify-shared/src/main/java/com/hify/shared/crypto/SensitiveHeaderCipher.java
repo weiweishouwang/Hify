@@ -1,25 +1,28 @@
-package com.hify.tool.internal.security;
-
-import com.hify.shared.crypto.CredentialCipher;
-import com.hify.tool.api.ToolDetailResp;
-import com.hify.tool.internal.service.ToolSupport;
-import org.springframework.stereotype.Component;
+package com.hify.shared.crypto;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * HTTP 工具请求头的加密、脱敏与合并。
+ * 敏感请求头的逐值加密、脱敏与合并。
  *
- * <p><b>敏感头的值落库前加密</b> —— JSON TypeHandler 只做 JSON 转换，不做加密。
- * 落库形态：敏感头的值是一个封套 Map，非敏感头仍是明文字符串。两者类型不同，
- * 因此「这个值是不是密文」不需要额外的约定，看类型就知道。
+ * <p><b>敏感与否按请求头名字判定</b>，不要求用户理解或标注这套机制 ——
+ * 名字里含 authorization / token / secret / password / api-key / cookie / credential
+ * 的头一律加密。
  *
- * <p>敏感与否按<b>请求头名字</b>判定，不要求用户理解或标注这套机制。
+ * <p><b>逐值加密而不是整体加密</b>：非敏感头（{@code Content-Type} 这类）保持明文，
+ * 编辑表单能原样回显；敏感头密文存储，对外只回显占位符。
+ *
+ * <p>落库形态里，敏感头的值是一个封套 {@code Map}，非敏感头是字符串 ——
+ * 两者类型不同，所以「这个值是不是密文」不需要额外约定，看类型就知道。
+ *
+ * <p>放在 shared 是因为 tool 与 mcp 两个模块都要用同一套规则与同一套占位符。
  */
-@Component
-public class ToolHeaderCipher {
+public class SensitiveHeaderCipher {
+
+    /** 对外形态里敏感头的占位值。 */
+    public static final String MASKED_VALUE = "******";
 
     /** 名字里含这些片段的请求头按敏感处理（不区分大小写）。 */
     private static final List<String> SENSITIVE_FRAGMENTS = List.of(
@@ -27,7 +30,7 @@ public class ToolHeaderCipher {
 
     private final CredentialCipher cipher;
 
-    public ToolHeaderCipher(CredentialCipher cipher) {
+    public SensitiveHeaderCipher(CredentialCipher cipher) {
         this.cipher = cipher;
     }
 
@@ -86,7 +89,7 @@ public class ToolHeaderCipher {
         Map<String, String> result = new LinkedHashMap<>();
         stored.forEach((name, value) -> {
             if (value instanceof Map<?, ?> || isSensitive(name)) {
-                result.put(name, ToolDetailResp.MASKED_VALUE);
+                result.put(name, MASKED_VALUE);
             } else if (value != null) {
                 result.put(name, String.valueOf(value));
             }
@@ -118,7 +121,7 @@ public class ToolHeaderCipher {
             if (name == null || name.isBlank() || value == null || value.isBlank()) {
                 return;
             }
-            if (ToolDetailResp.MASKED_VALUE.equals(value)) {
+            if (MASKED_VALUE.equals(value)) {
                 // 前端把敏感值原样回传，表示「不动它」
                 Object existing = stored == null ? null : stored.get(name);
                 if (existing != null) {
@@ -133,11 +136,6 @@ public class ToolHeaderCipher {
             }
         });
         return result;
-    }
-
-    /** 校验请求头并把明文转成落库形态，一步到位。 */
-    public Map<String, Object> encryptValidatedHeaders(Map<String, String> headers) {
-        return encryptHeaders(ToolSupport.headers(headers));
     }
 
     @SuppressWarnings("unchecked")

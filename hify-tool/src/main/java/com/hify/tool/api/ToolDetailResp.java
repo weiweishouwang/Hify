@@ -15,7 +15,7 @@ public class ToolDetailResp extends ToolSummaryResp {
      *
      * <p>详情接口用它替换请求头里的敏感值；编辑时原样回传即表示「保留原值不改」。
      */
-    public static final String MASKED_VALUE = "******";
+    public static final String MASKED_VALUE = com.hify.shared.crypto.SensitiveHeaderCipher.MASKED_VALUE;
 
     /** 入参 JSON Schema，给模型看。 */
     private Map<String, Object> schema;

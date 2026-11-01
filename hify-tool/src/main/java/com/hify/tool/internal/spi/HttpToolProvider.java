@@ -10,7 +10,7 @@ import com.hify.tool.api.ToolSourceType;
 import com.hify.tool.api.ToolSpec;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
 import com.hify.tool.internal.mapper.ToolDefinitionMapper;
-import com.hify.tool.internal.security.ToolHeaderCipher;
+import com.hify.shared.crypto.SensitiveHeaderCipher;
 import com.hify.tool.internal.service.ToolConfig;
 import com.hify.tool.internal.service.ToolSupport;
 import org.springframework.stereotype.Component;
@@ -32,10 +32,10 @@ import java.util.Map;
 public class HttpToolProvider implements ToolProvider {
 
     private final ToolDefinitionMapper tools;
-    private final ToolHeaderCipher headerCipher;
+    private final SensitiveHeaderCipher headerCipher;
     private final ToolHttpClient client;
 
-    public HttpToolProvider(ToolDefinitionMapper tools, ToolHeaderCipher headerCipher, ToolHttpClient client) {
+    public HttpToolProvider(ToolDefinitionMapper tools, SensitiveHeaderCipher headerCipher, ToolHttpClient client) {
         this.tools = tools;
         this.headerCipher = headerCipher;
         this.client = client;

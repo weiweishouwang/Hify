@@ -10,7 +10,7 @@ import com.hify.tool.api.ToolUpdateReq;
 import com.hify.tool.internal.converter.ToolConverter;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
 import com.hify.tool.internal.mapper.ToolDefinitionMapper;
-import com.hify.tool.internal.security.ToolHeaderCipher;
+import com.hify.shared.crypto.SensitiveHeaderCipher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,13 +38,13 @@ class ToolDefinitionServiceImplTest {
     @Mock ToolDefinitionMapper tools;
     @Mock ToolSyncService syncService;
 
-    ToolHeaderCipher headerCipher;
+    SensitiveHeaderCipher headerCipher;
     ToolDefinitionServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        headerCipher = new ToolHeaderCipher(new CredentialCipher(
-                Base64.getEncoder().encodeToString(new byte[32]), "tool-credential-v1"));
+        headerCipher = new SensitiveHeaderCipher(new CredentialCipher(
+                Base64.getEncoder().encodeToString(new byte[32]), "hify-credential-v1"));
         service = new ToolDefinitionServiceImpl(tools, new ToolConverter(headerCipher), headerCipher, syncService);
         lenient().when(tools.findIdByToolKey(anyString(), anyString())).thenReturn(null);
         lenient().when(tools.findIdByName(anyString())).thenReturn(null);
