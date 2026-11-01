@@ -195,6 +195,56 @@ public class LlmHttpClient {
                 url, status, elapsedMillis(startNanos), eventCount.get());
     }
 
+    /**
+     * 发一次按行分帧的流式请求，逐行把内容回调出去。
+     *
+     * <p><b>给 NDJSON 协议用</b>（Ollama 原生的 {@code /api/chat}）—— 一行一个完整
+     * JSON 对象，末帧带 {@code done: true}。SSE 用空行分帧，两种规则不同，
+     * 所以分两套读取器（{@link SseFrameReader} / {@link NdjsonFrameReader}）。
+     *
+     * <p>不校验 Content-Type：NDJSON 服务端的实现五花八门
+     * （{@code application/x-ndjson} / {@code application/json} / {@code text/plain}），
+     * 靠内容解析失败来判定上游故障更可靠。
+     *
+     * @param url      完整请求地址
+     * @param headers  请求头
+     * @param body     请求体
+     * @param callback 行回调，{@code type} 恒为 null
+     * @throws LlmApiException 上游返回错误状态、超时、连接失败
+     */
+    public void streamLines(String url, Map<String, String> headers, String body, LlmStreamCallback callback) {
+        Request request = buildRequest(url, headers, body);
+
+        long startNanos = System.nanoTime();
+        AtomicInteger lineCount = new AtomicInteger();
+        int status = 0;
+        try (Response response = streamingClient.newCall(request).execute()) {
+            status = response.code();
+            if (!response.isSuccessful()) {
+                log.warn("LLM 按行流式请求被上游拒绝 url={} status={} cost={}ms",
+                        url, status, elapsedMillis(startNanos));
+                throw new LlmApiException(kindOf(status), "LLM 上游返回错误状态: " + status);
+            }
+            NdjsonFrameReader.readAll(response, (type, data) -> {
+                lineCount.incrementAndGet();
+                callback.onEvent(type, data);
+            });
+        } catch (LlmApiException e) {
+            // 上面已经记过日志，原样上抛
+            throw e;
+        } catch (IOException e) {
+            log.warn("LLM 按行流式请求失败 url={} cost={}ms reason={}",
+                    url, elapsedMillis(startNanos), e.getClass().getSimpleName());
+            throw translateIoFailure(e, url);
+        } catch (RuntimeException e) {
+            // 回调里抛的异常是调用方自己的问题，不是上游故障，原样上抛
+            log.warn("LLM 按行流式回调异常 url={} cost={}ms", url, elapsedMillis(startNanos), e);
+            throw e;
+        }
+        log.info("LLM 按行流式请求完成 url={} status={} cost={}ms lines={}",
+                url, status, elapsedMillis(startNanos), lineCount.get());
+    }
+
     // ── 客户端构造 ──────────────────────────────────────────────────
 
     /**

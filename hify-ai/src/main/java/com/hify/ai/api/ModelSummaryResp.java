@@ -11,6 +11,9 @@ public class ModelSummaryResp {
     /** 对外模型标识。 */
     private String publicId;
 
+    /** 所属接入点的内部主键，供模块间关联使用。 */
+    private Long providerId;
+
     /** 所属接入点的对外标识。 */
     private String providerPublicId;
 
@@ -67,6 +70,14 @@ public class ModelSummaryResp {
 
     public void setPublicId(String publicId) {
         this.publicId = publicId;
+    }
+
+    public Long getProviderId() {
+        return providerId;
+    }
+
+    public void setProviderId(Long providerId) {
+        this.providerId = providerId;
     }
 
     public String getProviderPublicId() {

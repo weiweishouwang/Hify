@@ -258,6 +258,7 @@ public class ModelServiceImpl implements ModelService {
         ModelSummaryResp resp = new ModelSummaryResp();
         resp.setId(row.getId());
         resp.setPublicId(row.getPublicId());
+        resp.setProviderId(row.getProviderId());
         resp.setProviderPublicId(provider == null ? null : provider.getPublicId());
         resp.setProviderName(provider == null ? null : provider.getName());
         resp.setModelName(row.getModelName());

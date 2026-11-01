@@ -16,16 +16,10 @@ import java.util.List;
 import java.util.Map;
 
 /** 目录接口适配器的公共部分：请求、响应校验、凭据解密。 */
-abstract class AbstractCatalogAdapter implements ProviderAdapter {
-
-    protected final LlmHttpClient http;
-    protected final JsonUtils json;
-    protected final ProviderCredentialCipher cipher;
+abstract class AbstractCatalogAdapter extends AbstractProviderAdapter implements ProviderAdapter {
 
     protected AbstractCatalogAdapter(LlmHttpClient http, JsonUtils json, ProviderCredentialCipher cipher) {
-        this.http = http;
-        this.json = json;
-        this.cipher = cipher;
+        super(http, json, cipher);
     }
 
     /** 目录端点路径，拼接在协议根地址之后。 */
@@ -110,22 +104,9 @@ abstract class AbstractCatalogAdapter implements ProviderAdapter {
         return vector;
     }
 
-    /** 解析响应体为 JSON 对象；结构不对一律归为上游响应无效。 */
-    protected JsonNode readJson(String response, String message) {
-        try {
-            JsonNode root = response == null ? null : json.mapper().readTree(response);
-            if (root == null || !root.isObject()) {
-                throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, message);
-            }
-            return root;
-        } catch (JsonProcessingException exception) {
-            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, message, exception);
-        }
-    }
-
     /** 取一次目录响应并校验结构，失败一律归为上游响应无效。 */
     protected JsonNode fetchCatalog(ModelProviderDO provider) {
-        String base = ProviderConfigSupport.baseUrl(provider.getBaseUrl());
+        String base = baseUrl(provider);
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Accept", "application/json");
         headers.putAll(authHeaders(provider));
@@ -139,28 +120,5 @@ abstract class AbstractCatalogAdapter implements ProviderAdapter {
         } catch (JsonProcessingException exception) {
             throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR, "供应商目录响应不是有效 JSON", exception);
         }
-    }
-
-    /** 解密已保存的 API Key；未配置时返回 null。 */
-    protected String decryptKey(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (!(value instanceof Map<?, ?> envelope)) {
-            throw ProviderConfigSupport.invalid("接入点凭据格式无效");
-        }
-        Map<String, Object> typed = new LinkedHashMap<>();
-        for (var entry : envelope.entrySet()) {
-            if (!(entry.getKey() instanceof String key)) {
-                throw ProviderConfigSupport.invalid("接入点凭据格式无效");
-            }
-            typed.put(key, entry.getValue());
-        }
-        return cipher.decrypt(typed);
-    }
-
-    /** 接入点已保存的鉴权配置。 */
-    protected Map<String, Object> authConfig(ModelProviderDO provider) {
-        return provider.getAuthConfig() == null ? Map.of() : provider.getAuthConfig();
     }
 }
