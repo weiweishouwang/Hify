@@ -33,6 +33,12 @@ public class BuiltinToolProvider implements ToolProvider {
         return ToolSourceType.BUILTIN.code();
     }
 
+    /** 内置工具的目录行由同步器托管：代码里删掉一个内置工具，目录里的旧行要跟着停用。 */
+    @Override
+    public boolean managesDirectoryRows() {
+        return true;
+    }
+
     @Override
     public List<ToolSpec> listTools() {
         return tools.stream()

@@ -197,6 +197,7 @@ CREATE TABLE `mcp_server` (
   `headers`      JSON         NULL                                   COMMENT 'http 传输的请求头',
   `enabled`      TINYINT       NOT NULL DEFAULT 1                    COMMENT '是否启用：0 否 / 1 是',
   `status`       VARCHAR(32)  NOT NULL DEFAULT 'unknown'             COMMENT '连通状态：unknown / online / offline',
+  `config_version` BIGINT UNSIGNED NOT NULL DEFAULT 1                 COMMENT 'MCP 服务配置版本，由业务层递增，用于乐观锁',
   `last_checked_at` DATETIME(3) NULL                                 COMMENT '最近一次探测时间(UTC)',
   `tool_cache`   JSON         NULL                                   COMMENT 'tools/list 的结果缓存',
   `tool_cache_at` DATETIME(3) NULL                                  COMMENT '缓存时间(UTC)',

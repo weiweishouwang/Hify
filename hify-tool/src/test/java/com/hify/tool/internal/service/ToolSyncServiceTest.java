@@ -98,6 +98,25 @@ class ToolSyncServiceTest {
     }
 
     @Test
+    @DisplayName("托管目录行的来源返回空列表时，把该来源的旧行全部停用")
+    void managingSourceWithEmptyListDisablesAllRows() {
+        var stale = new ToolDefinitionDO();
+        stale.setId(9L);
+        stale.setToolKey("gone_tool");
+        stale.setEnabled(true);
+
+        when(provider.managesDirectoryRows()).thenReturn(true);
+        when(provider.listTools()).thenReturn(List.of());
+        when(tools.listToolKeysBySource(anyString())).thenReturn(List.of("gone_tool"));
+        when(tools.selectOne(any())).thenReturn(stale);
+
+        var result = service.syncAll();
+
+        assertThat(result.getDisabled()).isEqualTo(1);
+        assertThat(stale.getEnabled()).isFalse();
+    }
+
+    @Test
     @DisplayName("工具名被别的工具占着时跳过同步，避免表里出现两个同名工具")
     void skipsOnNameConflict() {
         when(provider.listTools()).thenReturn(List.of(spec("current_time", "current_time")));

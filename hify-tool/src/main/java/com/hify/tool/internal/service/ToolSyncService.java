@@ -68,9 +68,17 @@ public class ToolSyncService {
                 continue;
             }
             if (specs == null || specs.isEmpty()) {
-                // 空列表表示该来源不由 provider 发现（http 就是这样），
-                // 或者上游暂时没有工具。这种情况不做任何下架处理 —— 否则会把整批工具误停。
-                log.info("工具来源本次没有可发现的工具，跳过 sourceType={}", sourceType);
+                if (!provider.managesDirectoryRows()) {
+                    // 空列表表示该来源不由 provider 发现（http 就是这样）——
+                    // 这种情况不做任何下架处理，否则会把整批工具误停。
+                    log.info("工具来源本次没有可发现的工具，跳过 sourceType={}", sourceType);
+                    continue;
+                }
+                // 本来源托管目录行：空列表 = 工具全部下架
+                // （内置工具被从代码里删掉、MCP 的最后一个服务被删掉）。
+                // 仍然走一遍计划，applyPlans 会把该来源的行全部置停用。
+                log.info("工具来源已无工具，全部下架 sourceType={}", sourceType);
+                plans.add(new SourcePlan(sourceType, List.of()));
                 continue;
             }
             plans.add(new SourcePlan(sourceType, specs));

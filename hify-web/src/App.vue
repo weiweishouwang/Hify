@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ChatDotRound,
   Collection,
+  Connection,
   Expand,
   Fold,
   Setting,
@@ -41,13 +42,14 @@ function toggleCollapsed(): void {
 }
 
 /**
- * 侧边栏菜单：五项，与 router/index.ts 里的五条业务路由一一对应。
+ * 侧边栏菜单：六项，与 router/index.ts 里的六条业务路由一一对应。
  * 加一项菜单要同时加一条路由，两处都要改。
  */
 const menus = [
   { path: '/models', title: '模型管理', icon: Setting },
   { path: '/tools', title: '工具管理', icon: Tools },
   { path: '/knowledge', title: '知识库', icon: Collection },
+  { path: '/mcp-servers', title: 'MCP 服务', icon: Connection },
   { path: '/agents', title: 'Agent 管理', icon: User },
   { path: '/chat', title: '对话', icon: ChatDotRound },
 ]
