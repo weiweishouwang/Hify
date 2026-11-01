@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.exception.ErrorCode;
 import com.hify.shared.id.IdGenerator;
+import com.hify.shared.mybatis.CursorCodec;
 import com.hify.tool.api.ToolCreateReq;
 import com.hify.tool.api.ToolDetailResp;
 import com.hify.tool.api.ToolListQuery;
@@ -21,11 +22,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,7 +105,7 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
             wrapper.and(item -> item.like("name", keyword).or().like("tool_key", keyword));
         }
         if (effective.getCursor() != null && !effective.getCursor().isBlank()) {
-            Cursor cursor = decodeCursor(effective.getCursor());
+            var cursor = CursorCodec.decode(effective.getCursor());
             wrapper.apply("(created_at, id) < ({0}, {1})", cursor.createdAt(), cursor.id());
         }
         int size = size(effective);
@@ -124,7 +121,8 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
         result.setItems(items);
         result.setHasNext(hasNext);
         if (hasNext) {
-            result.setNextCursor(encodeCursor(visible.getLast()));
+            var last = visible.getLast();
+            result.setNextCursor(CursorCodec.encode(last.getCreatedAt(), last.getId()));
         }
         return result;
     }
@@ -266,30 +264,7 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
         return Math.max(1, Math.min(query.getSize(), com.hify.shared.web.PageQuery.MAX_SIZE_ADMIN));
     }
 
-    private static String encodeCursor(ToolDefinitionDO row) {
-        String value = row.getCreatedAt() + "|" + row.getId();
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
-    }
 
-    private static Cursor decodeCursor(String value) {
-        try {
-            if (value.length() > MAX_CURSOR_LENGTH) {
-                throw new IllegalArgumentException("游标过长");
-            }
-            String[] parts = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
-                    .split("\\|", -1);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("游标不完整");
-            }
-            long id = Long.parseLong(parts[1]);
-            if (id <= 0) {
-                throw new IllegalArgumentException("游标主键无效");
-            }
-            return new Cursor(LocalDateTime.parse(parts[0]), id);
-        } catch (IllegalArgumentException | DateTimeParseException exception) {
-            throw new BizException(ErrorCode.PARAM_ERROR, "列表游标格式不合法", exception);
-        }
-    }
 
     private static String string(Object value) {
         return value == null ? null : String.valueOf(value);
@@ -320,6 +295,4 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
         return new BizException(ErrorCode.CONFLICT, "工具唯一标识或名称已被占用", cause);
     }
 
-    private record Cursor(LocalDateTime createdAt, long id) {
-    }
 }

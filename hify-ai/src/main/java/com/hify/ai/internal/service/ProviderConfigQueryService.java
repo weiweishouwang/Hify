@@ -13,15 +13,13 @@ import com.hify.ai.internal.mapper.ModelProviderMapper;
 import com.hify.shared.config.CacheConfig;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.exception.ErrorCode;
+import com.hify.shared.mybatis.CursorCodec;
 import com.hify.shared.web.PageQuery;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 
 /** 独立缓存代理只保存配置，外层服务在每次详情查询时追加健康信息。 */
@@ -50,7 +48,7 @@ public class ProviderConfigQueryService {
             wrapper.eq("enabled", query.getEnabled());
         }
         if (query.getCursor() != null && !query.getCursor().isBlank()) {
-            Cursor cursor = decodeCursor(query.getCursor());
+            var cursor = CursorCodec.decode(query.getCursor());
             wrapper.apply("(created_at, id) < ({0}, {1})", cursor.createdAt(), cursor.id());
         }
         int size = size(query);
@@ -64,7 +62,8 @@ public class ProviderConfigQueryService {
         result.setItems(items);
         result.setHasNext(hasNext);
         if (hasNext) {
-            result.setNextCursor(encodeCursor(visible.getLast()));
+            var last = visible.getLast();
+            result.setNextCursor(CursorCodec.encode(last.getCreatedAt(), last.getId()));
         }
         return result;
     }
@@ -94,30 +93,6 @@ public class ProviderConfigQueryService {
                 : Math.max(1, Math.min(query.getSize(), PageQuery.MAX_SIZE_ADMIN));
     }
 
-    private static String encodeCursor(ModelProviderDO row) {
-        String value = row.getCreatedAt() + "|" + row.getId();
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
-    }
 
-    private static Cursor decodeCursor(String value) {
-        try {
-            if (value.length() > MAX_CURSOR_LENGTH) {
-                throw new IllegalArgumentException("游标过长");
-            }
-            String[] parts = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
-                    .split("\\|", -1);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("游标不完整");
-            }
-            long id = Long.parseLong(parts[1]);
-            if (id <= 0) {
-                throw new IllegalArgumentException("游标主键无效");
-            }
-            return new Cursor(LocalDateTime.parse(parts[0]), id);
-        } catch (IllegalArgumentException | DateTimeParseException exception) {
-            throw new BizException(ErrorCode.PARAM_ERROR, "列表游标格式不合法", exception);
-        }
-    }
 
-    private record Cursor(LocalDateTime createdAt, long id) { }
 }
