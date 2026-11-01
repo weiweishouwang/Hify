@@ -435,6 +435,7 @@ docker compose down -v           # 停并清空数据
 - `@Transactional` 只出现在 `internal/service` 层
 - **「事务里写库、事务外回查这行再干活」的异步任务，必须在事务提交后才提交** —— 任务在事务提交前起来回查，那一行还看不见，会静默扑空。发事件 + `@TransactionalEventListener(phase = AFTER_COMMIT)`（知识库的索引任务踩过：文档永远停在 `uploaded`）
 - 扩展点用**依赖倒置**：SPI 接口放消费方。`tool` 定义 `ToolProvider`，`mcp`/`http`/`builtin` 各自实现，`tool` 注入 `List<ToolProvider>` 收集
+- **跨模块按 id 取数据走「批量」方法，不逐个 get** —— 一个模块在自己的表里存了别人的 id（`ai_agent.tool_ids` / `model_id`），要按 id 反查时用对方 api 里的批量方法：`ToolDefinitionService.listBindingsByPublicIds` / `KnowledgeBaseService.listByPublicIds` / `ModelService.listByIds`。逐个 `get()` 是 N+1 次跨模块调用；`list()` 是游标分页、一次拿不全（上限 200），也不能替代
 - 跨模块副作用走 Spring 事件（`ApplicationEventPublisher`），事件流必须单向（发布者层次 ≥ 监听者层次）
 - 当前用户、trace id 等上下文**不得依赖 ThreadLocal 跨模块传递**，跨模块接口要显式携带
 - 认证必须无状态（JWT）或 Redis 共享 session，不得依赖单机内存 session
@@ -461,6 +462,8 @@ docker compose down -v           # 停并清空数据
 ```sql
 ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 ```
+
+**数组里存的是对外 ID（ULID 字符串），不是内部主键** —— `CHAR(64)` 就是给 26 位 ULID 留的位。公开 ID 跨模块稳定，主键重排（导库、数据迁移）不会把引用带断；数字主键对排错也没有意义。**唯一例外是 `ai_agent.model_id`** —— 它存 `ai_model.id` 主键，因为模型在同一库里、且表上有 `idx_model_id`；代价是跨模块解析模型名要走 `ModelService.listByIds` 按主键批量反查。
 
 **分页**：**禁止 `OFFSET` 深分页**，一律用游标分页——排序键恒为 `(created_at, id)` 复合并用行值比较 `(a,b) < (x,y)`。总数用 `LIMIT N+1` 判断而非 `COUNT(*)`。单页上限 100（管理台 200），不做页码跳转。
 
@@ -566,6 +569,9 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **明确哪些东西不落库** —— 分段正文只在 PG。避免把易变数据塞进数据库。**（例外：`tool_definition` 是统一目录，内置与 MCP 工具也落库，见下面的「工具目录」条目。）**
 - **主键与对外 ID 分离** —— 随机 UUID 做聚簇主键会造成 B+tree 碎片与 buffer pool 命中率下降；ULID 有序、紧凑、不可枚举（分享链接防遍历猜 id）。
 - **多对多用 JSON 数组不建关联表** —— 反向引用不落库，工具被删除时不会有孤儿关联行。代价是无法 JOIN、无法保证引用有效性，靠多值索引兜住性能。
+- **Agent 的跨模块引用存对外 ID 字符串** —— `ai_agent.tool_ids` / `knowledge_ids` 存 ULID 而不是主键。**为什么**：公开 ID 跨模块稳定，主键重排不会把引用带断；表上的多值索引 `CAST(... AS CHAR(64) ARRAY)` 本来就是为字符串设计的。**代价**：比数字大（26 字节 vs 8），一个 Agent 绑 20 个工具多约 360 字节 —— 可忽略。**替代方案**：存内部主键（已被否决）。**唯一例外**：`model_id` 存主键（同库 + 有 `idx_model_id`），代价是跨模块解析模型名要按主键批量反查。
+- **Agent 的参数区只认三个已知参数**（`temperature` / `max_tokens` / `top_p`）—— **为什么**：上游对不认识的参数是**静默丢弃**而不是报错（§3.5），放开任意参数等于允许用户填一个上游根本不认的值，然后困惑于「为什么没生效」。**代价**：想加新参数要改代码。**替代方案**：任意 `Map`（已被否决）。
+- **Agent 状态三态：`draft` / `published` / `disabled`** —— 一期不做发布快照（`ai_agent_version` 保留不用），所以「发布」只是翻状态，**没有版本概念，改完直接生效**。编排层只接受 `published`。**代价**：多一步发布，新建默认 `draft`，对话页选不到 —— 列表页要给状态一个醒目的标签。
 - **引用关系存文本快照** —— 知识库重新索引后 chunk id 会变，历史对话的溯源不能依赖 PG 还在。
 - **用户与 API Key 归 `hify-shared`** —— 只有 2 张表，单开 Maven 模块不划算；用户域长大后再独立成模块，届时是纯搬迁。
 - **API Key 是用户级而非应用级** —— 用户级保留调用者身份做审计；应用级会让「谁调的」退化成「哪个共享 key 调的」。
