@@ -50,8 +50,15 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
+  /**
+   * 挂一条工具调用。
+   *
+   * 先找已经有这次调用的消息（工具结果回到同一张卡片上），
+   * 找不到才挂到最后一条 —— 那是刚发起的这一轮。
+   */
   function upsertToolCall(id: string, call: ToolCall): void {
-    const message = messages.value[messages.value.length - 1]
+    const owner = messages.value.find((item) => item.toolCalls?.some((callItem) => callItem.id === id))
+    const message = owner ?? messages.value[messages.value.length - 1]
     if (!message) {
       return
     }

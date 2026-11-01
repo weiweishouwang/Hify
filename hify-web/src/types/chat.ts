@@ -14,6 +14,8 @@ export interface ToolCall {
   arguments: string
   /** 执行结果，工具执行完成后才有。 */
   result?: string
+  /** 失败原因；工具执行失败时才有。 */
+  error?: string
   status: ToolCallStatus
 }
 

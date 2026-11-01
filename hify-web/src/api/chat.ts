@@ -7,6 +7,7 @@ import type { ToolCall } from '@/types/chat'
  * 流式对话的 SSE 事件契约。
  *
  * 后端 hify-conversation 需要按这个约定发帧（框架已定为 Spring MVC + SSE）：
+ *   event: turn        data: {"index":0}          —— 新一轮模型调用开始
  *   event: message     data: {"content":"增量文本"}
  *   event: tool_call   data: {"id":"call_1","name":"xxx","arguments":"{...}"}
  *   event: tool_result data: {"id":"call_1","result":"..."}
@@ -15,6 +16,8 @@ import type { ToolCall } from '@/types/chat'
  *   data: [DONE]       —— 兜底结束标记，看到即收流
  */
 export interface ChatStreamHandlers {
+  /** 新一轮模型调用开始。index 为 0 表示第一轮。 */
+  onTurn?: (index: number) => void
   onText: (delta: string) => void
   onToolCall?: (call: ToolCall) => void
   onToolResult?: (call: ToolCall) => void
@@ -61,6 +64,9 @@ function dispatch(event: SseEvent, handlers: ChatStreamHandlers): void {
   }
 
   switch (event.event) {
+    case 'turn':
+      handlers.onTurn?.(Number(payload.index ?? 0))
+      break
     case 'message':
       handlers.onText(String(payload.content ?? ''))
       break
@@ -78,6 +84,7 @@ function dispatch(event: SseEvent, handlers: ChatStreamHandlers): void {
         name: String(payload.name ?? ''),
         arguments: String(payload.arguments ?? ''),
         result: String(payload.result ?? ''),
+        ...(payload.error ? { error: String(payload.error) } : {}),
         status: payload.error ? 'error' : 'done',
       })
       break
