@@ -6,7 +6,9 @@ import HifyTable, { type HifyTableColumn, type HifyTableHandle } from '@/compone
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { createProvider, deleteProvider, getProviderDetail, getProviderList, testConnection, updateProvider } from '@/api/provider'
+import { syncModels, updateModel } from '@/api/model'
 import type { HealthStatus, ModelConfig, ProviderConfig, ProviderListItem, ProviderType } from '@/types/provider'
+import type { ModelType } from '@/types/model'
 import { useConfirm } from '@/composables/useConfirm'
 import { useRequest } from '@/composables/useRequest'
 import { notifySuccess } from '@/utils/notify'
@@ -37,6 +39,10 @@ const showApiKey = ref(false)
 const testingIds = ref(new Set<string>())
 const deletingIds = ref(new Set<string>())
 const expandedIds = new Set<string>()
+/** 模型配置的待保存改动：模型 publicId → 改过的字段。 */
+const modelEdits = ref<Record<string, { modelType?: ModelType; embeddingDimension?: number | null; enabled?: boolean }>>({})
+const syncingProviderIds = ref(new Set<string>())
+const savingModelIds = ref(new Set<string>())
 let editSequence = 0
 let modelSequence = 0
 let disposed = false
@@ -106,7 +112,60 @@ async function handleSubmit(form: ProviderForm): Promise<void> {
 
 async function refreshTable(reset = false): Promise<void> {
   modelStates.value = {}
+  modelEdits.value = {}
   await tableRef.value?.refresh({ reset })
+}
+
+function modelEdit(row: ModelConfig): { modelType?: ModelType; embeddingDimension?: number | null; enabled?: boolean } {
+  return modelEdits.value[row.publicId] ?? {}
+}
+
+function setModelType(row: ModelConfig, value: ModelType): void {
+  modelEdits.value = { ...modelEdits.value, [row.publicId]: { ...modelEdit(row), modelType: value } }
+}
+
+function setModelDimension(row: ModelConfig, value: number | null | undefined): void {
+  modelEdits.value = { ...modelEdits.value, [row.publicId]: { ...modelEdit(row), embeddingDimension: value } }
+}
+
+function setModelEnabled(row: ModelConfig, value: boolean): void {
+  modelEdits.value = { ...modelEdits.value, [row.publicId]: { ...modelEdit(row), enabled: value } }
+}
+
+/** 保存单个模型的配置。上游目录不标用途与维度，只能在这里人工认定。 */
+async function saveModel(row: ProviderListItem, model: ModelConfig): Promise<void> {
+  if (!model.publicId || savingModelIds.value.has(model.publicId)) return
+  const edit = modelEdit(model)
+  if (edit.modelType === undefined && edit.embeddingDimension === undefined && edit.enabled === undefined) return
+  savingModelIds.value.add(model.publicId)
+  try {
+    await updateModel(model.publicId, {
+      modelType: edit.modelType ?? model.modelType,
+      embeddingDimension: edit.embeddingDimension === undefined ? model.embeddingDimension : edit.embeddingDimension,
+      enabled: edit.enabled ?? model.enabled,
+      configVersion: model.configVersion,
+    })
+    notifySuccess('已保存模型配置')
+    const { [model.publicId]: _removed, ...rest } = modelEdits.value
+    modelEdits.value = rest
+    await loadModels(row, true)
+  } catch {
+    // 失败由请求层提示
+  } finally { savingModelIds.value.delete(model.publicId) }
+}
+
+/** 从接入点同步上游模型目录。 */
+async function handleSyncModels(row: ProviderListItem): Promise<void> {
+  if (!row.publicId || syncingProviderIds.value.has(row.publicId)) return
+  syncingProviderIds.value.add(row.publicId)
+  try {
+    const result = await syncModels(row.publicId)
+    ElMessage.success(`已同步模型：新增 ${result.created}，更新 ${result.updated}，下架 ${result.disabled}`)
+    await loadModels(row, true)
+    await refreshTable()
+  } catch {
+    // 失败由请求层提示
+  } finally { syncingProviderIds.value.delete(row.publicId) }
 }
 
 async function handleDelete(row: ProviderListItem): Promise<void> {
@@ -215,16 +274,37 @@ onBeforeUnmount(() => { disposed = true; editSequence += 1 })
         </template>
         <template #expand="{ row }">
           <div v-loading="state(row)?.loading" class="model-panel">
-            <p class="model-caption">关联模型配置（模型数仅统计已启用项）</p>
+            <div class="model-head">
+              <p class="model-caption">关联模型配置（模型数仅统计已启用项）</p>
+              <el-button text type="primary" :data-testid="`sync-models-${row.publicId}`"
+                :loading="syncingProviderIds.has(row.publicId)" @click="handleSyncModels(row)">同步上游模型</el-button>
+            </div>
             <div v-if="state(row)?.error" class="model-error" role="alert">
               <span>模型加载失败</span><el-button text type="primary" @click="loadModels(row, true)">重新加载</el-button>
             </div>
             <el-table v-else-if="state(row)?.items?.length" :data="state(row)?.items" row-key="publicId" size="small">
-              <el-table-column prop="displayName" label="模型名称" min-width="140" />
-              <el-table-column prop="modelName" label="模型标识" min-width="180" />
-              <el-table-column prop="modelType" label="用途" width="110" />
-              <el-table-column label="状态" width="100"><template #default="scope">
-                <el-tag :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '启用' : '禁用' }}</el-tag>
+              <el-table-column prop="displayName" label="模型名称" min-width="130" />
+              <el-table-column prop="modelName" label="模型标识" min-width="170" />
+              <el-table-column label="用途" width="130"><template #default="scope">
+                <el-select :model-value="modelEdit(scope.row).modelType ?? scope.row.modelType" size="small"
+                  @update:model-value="(value: ModelType) => setModelType(scope.row, value)">
+                  <el-option label="对话" value="chat" />
+                  <el-option label="向量化" value="embedding" />
+                </el-select>
+              </template></el-table-column>
+              <el-table-column label="向量维度" width="120"><template #default="scope">
+                <el-input-number :model-value="modelEdit(scope.row).embeddingDimension === undefined
+                    ? scope.row.embeddingDimension ?? undefined : modelEdit(scope.row).embeddingDimension"
+                  size="small" :min="1" :controls="false" placeholder="未确认"
+                  @update:model-value="(value: number | undefined) => setModelDimension(scope.row, value ?? null)" />
+              </template></el-table-column>
+              <el-table-column label="状态" width="90"><template #default="scope">
+                <el-switch :model-value="modelEdit(scope.row).enabled ?? scope.row.enabled" size="small"
+                  @update:model-value="(value: boolean) => setModelEnabled(scope.row, value)" />
+              </template></el-table-column>
+              <el-table-column label="操作" width="80"><template #default="scope">
+                <el-button text type="primary" size="small" :data-testid="`save-model-${scope.row.publicId}`"
+                  :loading="savingModelIds.has(scope.row.publicId)" @click="saveModel(row, scope.row)">保存</el-button>
               </template></el-table-column>
             </el-table>
             <el-empty v-else :description="state(row)?.loading ? '模型加载中' : '暂无关联模型'" :image-size="48" />
@@ -267,6 +347,7 @@ onBeforeUnmount(() => { disposed = true; editSequence += 1 })
 .health-cell { display: flex; align-items: center; gap: var(--hify-space-2); }
 .latency, .field-hint { color: var(--color-text-tertiary); font-size: var(--hify-font-size-xs); }
 .model-panel { padding: var(--hify-space-4) var(--hify-space-6); }
+.model-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--hify-space-3); }
 .model-caption { color: var(--color-text-secondary); margin-bottom: var(--hify-space-3); }
 .model-error { display: flex; align-items: center; gap: var(--hify-space-3); color: var(--color-danger-600); }
 .full-width, .field-stack { width: 100%; }

@@ -11,7 +11,7 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: (_message: string, acti
 import ProviderList from '../ProviderList.vue'
 
 const row: ProviderListItem = { publicId: 'provider-one', name: 'Real provider', type: 'openai', baseUrl: 'https://example.com/v1', enabled: true, configVersion: 3, credentialsConfigured: true, enabledModelCount: 1, providerHealth: { status: 'UP', latencyMs: 0 } }
-const config: ProviderConfig = { ...row, authConfig: {}, extraParams: { seed: 1 }, modelConfigs: [{ publicId: 'model-one', displayName: 'Model One', modelName: 'upstream-model', modelType: 'chat', enabled: true }] }
+const config: ProviderConfig = { ...row, authConfig: {}, extraParams: { seed: 1 }, modelConfigs: [{ publicId: 'model-one', displayName: 'Model One', modelName: 'upstream-model', modelType: 'chat', enabled: true, configVersion: 1 }] }
 let wrapper: ReturnType<typeof mount>
 
 beforeEach(() => {

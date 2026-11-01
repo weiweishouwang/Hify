@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowDown,
   ChatDotRound,
+  Collection,
   Expand,
   Fold,
   Setting,
@@ -40,12 +41,13 @@ function toggleCollapsed(): void {
 }
 
 /**
- * 侧边栏菜单：四项，与 router/index.ts 里的四条业务路由一一对应。
+ * 侧边栏菜单：五项，与 router/index.ts 里的五条业务路由一一对应。
  * 加一项菜单要同时加一条路由，两处都要改。
  */
 const menus = [
   { path: '/models', title: '模型管理', icon: Setting },
   { path: '/tools', title: '工具管理', icon: Tools },
+  { path: '/knowledge', title: '知识库', icon: Collection },
   { path: '/agents', title: 'Agent 管理', icon: User },
   { path: '/chat', title: '对话', icon: ChatDotRound },
 ]

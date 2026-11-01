@@ -1,4 +1,5 @@
 import type { CursorPage, CursorQuery } from './api'
+import type { ModelType } from './model'
 
 export type ProviderType = 'openai' | 'anthropic' | 'ollama'
 export type HealthStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN'
@@ -17,9 +18,16 @@ export interface ModelConfig {
   publicId: string
   modelName: string
   displayName?: string
-  modelType: string
-  enabled: boolean
+  modelType: ModelType
   capabilities?: Record<string, unknown>
+  contextWindow?: number | null
+  maxOutputTokens?: number | null
+  embeddingDimension?: number | null
+  defaultParams?: Record<string, unknown>
+  extraParams?: Record<string, unknown>
+  enabled: boolean
+  sortOrder?: number
+  configVersion: number
 }
 
 export interface ProviderSummary {
