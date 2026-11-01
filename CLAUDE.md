@@ -52,7 +52,7 @@
 | 模块 | 职责 | 允许依赖 | 归属表 |
 |---|---|---|---|
 | `hify-shared` | 异常体系、错误码、当前用户上下文、trace id；平台域的用户与密钥 | — | `user`、`api_key` |
-| `hify-ai` | 模型接入点管理 + 模型调用（chat / embedding / 流式补全） | shared | `ai_model_provider`、`ai_model` |
+| `hify-ai` | 模型接入点管理 + 模型目录同步（上游模型 → `ai_model`）+ 模型调用（chat / embedding / 流式补全） | shared | `ai_model_provider`、`ai_model` |
 | `hify-tool` | Tool 抽象 + `ToolProvider` SPI + 内置 / HTTP / MCP 三种来源的统一目录 | shared | `tool_definition` |
 | `hify-knowledge` | TXT 上传、固定分块、embedding、向量检索 | shared, ai | `kb_knowledge_base`、`kb_document`（PG: `vec_chunk`） |
 | `hify-mcp` | MCP client、server 配置管理、MCP 来源的 ToolProvider | shared, tool | `mcp_server` |
@@ -433,6 +433,7 @@ docker compose down -v           # 停并清空数据
 - **跨模块只传 DTO，不传 MyBatis-Plus 实体**。DTO 不带 ORM 注解、无循环引用、字段可 JSON 序列化
 - `api` 接口签名必须「远程调用友好」：参数与返回值全是 DTO、无重载、参数 ≤ 3 个、无 checked exception、无业务 default 方法。**判据：能否被 Feign / Dubbo 直接实现**
 - `@Transactional` 只出现在 `internal/service` 层
+- **「事务里写库、事务外回查这行再干活」的异步任务，必须在事务提交后才提交** —— 任务在事务提交前起来回查，那一行还看不见，会静默扑空。发事件 + `@TransactionalEventListener(phase = AFTER_COMMIT)`（知识库的索引任务踩过：文档永远停在 `uploaded`）
 - 扩展点用**依赖倒置**：SPI 接口放消费方。`tool` 定义 `ToolProvider`，`mcp`/`http`/`builtin` 各自实现，`tool` 注入 `List<ToolProvider>` 收集
 - 跨模块副作用走 Spring 事件（`ApplicationEventPublisher`），事件流必须单向（发布者层次 ≥ 监听者层次）
 - 当前用户、trace id 等上下文**不得依赖 ThreadLocal 跨模块传递**，跨模块接口要显式携带
@@ -445,6 +446,8 @@ docker compose down -v           # 停并清空数据
 **通用**：引擎 InnoDB；字符集 `utf8mb4` / `utf8mb4_0900_ai_ci`；主键 `BIGINT UNSIGNED AUTO_INCREMENT`；对外 ID `CHAR(26)` ULID（`public_id` + `uk_public_id`，只给对外暴露路径的表）；时间 `DATETIME(3)` 存 UTC（**不用 `TIMESTAMP`**）；金额 `DECIMAL(18,4)`；配置用 MySQL 8 原生 `JSON`；**禁止 `ENUM`**；**禁止外键级联删除**；**禁止 `SELECT *`**；所有字段 NOT NULL 优先；单表二级索引 ≤ 5 个；联合索引总长 ≤ 3072 字节。
 
 **列名避开 MySQL 保留字** —— MyBatis-Plus 生成的 SQL **不给列名加反引号**，列名撞上保留字就是运行期语法错误。已踩：`tool_definition.schema`（`SCHEMA` 是保留字）→ 改成 `input_schema`。建表时列名要么避开保留字，要么确认 ORM 会加引号。
+
+**双数据源：向量库的数据源不能作为 `DataSource` bean 暴露** —— Spring Boot 的 `DataSourceAutoConfiguration` 带 `@ConditionalOnMissingBean(DataSource.class)`，容器里只要出现**任何** `DataSource` bean，它就不再生成 MySQL 的数据源，MyBatis-Plus 会连到 PG 去。用包装类型（如 `VectorDataSource`）持有连接池，对外只暴露 `NamedParameterJdbcTemplate` —— 它的 bean 类型不是 `DataSource`，MySQL 侧照旧由 Boot 自动配置接管。
 
 **软删行占不占名字，要分开看** —— 数据库唯一键（如 `uk_tool_key`）覆盖软删行，是硬约束：删掉的记录标识不能再用，报错时要说清楚（含「包括已删除记录」）。但**服务层的名称唯一性通常只看活着的行** —— 软删的记录已经绑不到 Agent 上，不该继续占名字。两种规则混用会出怪事：删掉一个 HTTP 工具后，同名的内置工具反而同步不进来了（同步被「名字被占用」挡掉）。
 
