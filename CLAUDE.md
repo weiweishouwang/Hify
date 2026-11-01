@@ -55,7 +55,7 @@
 | `hify-ai` | 模型接入点管理 + 模型目录同步（上游模型 → `ai_model`）+ 模型调用（chat / embedding / 流式补全） | shared | `ai_model_provider`、`ai_model` |
 | `hify-tool` | Tool 抽象 + `ToolProvider` SPI + 内置 / HTTP / MCP 三种来源的统一目录 | shared | `tool_definition` |
 | `hify-knowledge` | TXT 上传、固定分块、embedding、向量检索 | shared, ai | `kb_knowledge_base`、`kb_document`（PG: `vec_chunk`） |
-| `hify-mcp` | MCP client、server 配置管理、MCP 来源的 ToolProvider | shared, tool | `mcp_server` |
+| `hify-mcp` | MCP client、server 配置管理、MCP 来源的 ToolProvider（工具进 tool 模块的统一目录） | shared, tool | `mcp_server` |
 | `hify-agent` | Agent 配置的存取与组装 | shared, ai, tool, knowledge | `ai_agent`（`ai_agent_version` 可选，一期不做） |
 | `hify-conversation` | 会话、消息、流式对话编排 | shared, ai, tool, knowledge, agent | `conv_*` |
 | `hify-workflow` | 工作流定义的存取与执行（6 种节点） | shared, ai, tool, knowledge, agent | `wf_*` |
@@ -516,7 +516,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **接口调用只走 `utils/request.ts` 的 `get` / `post` / `put` / `del`** —— baseURL 是 `/api`，实际路径要带 `/v1` 前缀（`${API_PREFIX}/xxx`）。响应拦截器已经**自动解包出 `data`**、并在失败时 `ElMessage.error` + reject，**调用方不要重复解包、也不要再弹一次 toast**
 - **SSE 只走 `api/sse.ts` 的 `streamSse`** —— 不要在别处再写一份 `fetch` 解析帧的代码；`onError` 要区分「用户主动 abort」和「真的出错」，前者不算错误
 - **类型导入必须 `import type`** —— `verbatimModuleSyntax` 开着，写成普通 import 会在只导入类型的文件里留下运行时依赖
-- **模板属性值里不能出现 `//`** —— vue-tsc 会把它当成注释，类型检查报「找不到 xxx」这种跟实际代码无关的假错（`placeholder="https://..."` 就会中招）。**要写网址就放到脚本常量里再绑定**：`:placeholder="urlHint"`
+- **模板属性值里不能出现 `//`** —— vue-tsc 会把它当成注释，**该元素就没闭合**，后面的兄弟节点跟着错位，报出来的错误跟真正的病因完全无关（实测是「Cannot find name 'form'」出现在几行之外的插槽变量上，排查时极易误判为泛型推导或作用域问题）。`placeholder="https://..."` 就会中招。**要写网址就放到脚本常量里再绑定**：`:placeholder="urlHint"`
 - **模板里不能写 `import.meta`** —— Vue 模板不编译 ESM 表达式，需要的常量要在 `<script setup>` 里取出来再用（`const isDev = import.meta.env.DEV`）
 - **卸载必须清理**：SSE 连接、定时器、`addEventListener` 一律在 `onBeforeUnmount` 里撤销；`AbortController` 由 `stores/connection.ts` 统一持有，不要在组件里另起一份
 - **组件一律 `<script setup lang="ts">` + Composition API**；组件名与文件名都用 PascalCase；props 用 `defineProps<{...}>()` 声明类型
@@ -556,6 +556,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **不引入 WebFlux** —— MyBatis-Plus 是 JDBC 阻塞，WebFlux 下要用 R2DBC 而 MP 的 R2DBC 支持不成熟。**替代方案：WebFlux + R2DBC 或 Spring Data R2DBC**，代价是重做数据层。
 - **调上游 LLM 用阻塞式客户端 + 专用线程池，不用响应式**（2026-10-30 定）—— `shared.http.LlmHttpClient`（`post()` 走 RestTemplate，`stream()` 走 OkHttp 自己解析 SSE 帧）阻塞，调用方提交到 `llmExecutor`。**替代方案：WebClient + Reactor Netty** —— 每 provider 一个 `ConnectionProvider`、`Flux.timeout()` 表达 chunk 空闲超时、背压，这些语义更贴合流式场景，代价是多一套 Reactor 编程模型、异常传播要绕着写，且与「不引入 WebFlux」的取向冲突更大。选阻塞式的理由：超时与连接语义都直白，适配器就是普通 Java，异常直接往外抛。**代价：并发上限由 `llmExecutor` 的 50 个线程决定，而不是每 provider 的 `maxConnections`；且 `CallerRunsPolicy` 在队列满时会让提交方（多半是 Tomcat 线程）自己跑任务**
 - **LLM 适配器一期做 3 个：OpenAI 兼容 / Anthropic Messages / Ollama 原生** —— 前两个覆盖绝大多数用量，供应商名单靠 base_url 拉长；**Ollama 单写原生而不是蹭 OpenAI 兼容层**，因为只有原生能透传 `options.num_ctx`（兼容层忽略它，模型按 4096 上下文加载），且原生的 tool 行为更可靠。**代价**：Ollama 原生是 NDJSON 不是 SSE，多一套分帧与字段归一化。**Gemini 原生放二期** —— Google 的 OpenAI 兼容端点能先顶上
+- **MCP 工具用「服务标识:上游工具名」做工具标识** —— **决定了什么**：`tool_definition.tool_key` 取 `<服务 publicId>:<上游工具名>`。**为什么**：不同 MCP 服务可能提供同名工具，标识必须全局唯一；前缀还让调用时不必反查目录就知道该连哪个服务。**代价**：标识变长（26 + 1 + 工具名），`tool_key` 是 VARCHAR(128) 够用。**替代方案**：只存上游工具名（会撞名）。
+- **目录同步的「空列表」有两种含义，由 provider 自己声明** —— `ToolProvider.managesDirectoryRows()`：true 表示「列表为空 = 工具全部下架」（内置、MCP），false 表示「不由 provider 发现」（HTTP 工具由用户直接创建）。**为什么**：不区分的话，删掉最后一个 MCP 服务后它的工具行会永远留在目录里、且是启用状态 —— 目录里留着调不通的工具。**代价**：SPI 多一个方法，provider 实现要想清楚自己的空列表意味着什么。
 - **协议差异用策略模式收敛，不写 if-else 分发** —— `hify-ai/internal/spi/ProviderAdapter` 定义 `testConnection(provider)` 与 `listModels(provider)`，实现按协议分文件（`OpenAiAdapter` / `AnthropicAdapter` / `OllamaAdapter`，`OpenAiCompatibleAdapter` 直接继承 `OpenAiAdapter` 不重复代码），`ProviderAdapterFactory` 按 `provider.type` 取实例。**新增协议只加适配器并登记工厂，调用方不动**。接口放在 `internal/spi` 而不是 `api`：入参是数据对象，契约层不许出现数据对象
 - **模型接入点与模型分两张表** —— **连通性测试的粒度决定表的粒度**：端点能通不代表某个模型名在该账号下可用，一张表表达不了这两件事。
 - **工具目录是统一目录，三种来源都落 `tool_definition`** —— 内置、HTTP、MCP 三类工具各占一行，靠 `source_type` 区分。**决定了什么**：Agent 绑定工具时只存工具 id，不需要为内置工具另发明一套标识；工具的启停状态有地方落。**为什么**：`ai_agent.tool_ids` 是「工具 ID 数组」，若内置工具不落库就没有 row id，`tool_ids` 会退化成字符串数组，与 `knowledge_ids` 不一致。**代价**：内置与 MCP 的行是代码与上游的镜像，需要同步机制托管（幂等 upsert、消失下架、名字撞车跳过）；用户不能手工改删这两类行。**替代方案**：只存 HTTP 来源（已被否决）。
