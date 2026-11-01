@@ -35,6 +35,22 @@ public interface KnowledgeBaseService {
     KnowledgeBaseSummaryResp get(String publicId);
 
     /**
+     * 按对外 ID 批量取知识库。
+     *
+     * <p><b>给跨模块引用解析用</b>：别的模块在自己的表里存知识库的对外 ID
+     * （如 {@code ai_agent.knowledge_ids}），组装时要按 id 取回知识库清单。
+     * 逐个 {@link #get(String)} 是 N+1 次跨模块调用，
+     * 而 {@link #list(KnowledgeBaseListQuery)} 是游标分页、一次拿不全。
+     *
+     * <p><b>停用的知识库也会返回</b>（{@code status} 为 disabled）——
+     * 调用方要能区分「不存在」与「已停用」，两者的提示不一样。
+     *
+     * @param publicIds 知识库对外 ID 集合；为空时返回空列表
+     * @return 查到的知识库；查不到的 ID 不出现在结果里
+     */
+    List<KnowledgeBaseSummaryResp> listByPublicIds(List<String> publicIds);
+
+    /**
      * 更新知识库的名称、描述与状态。
      *
      * @param publicId 知识库的对外 ID

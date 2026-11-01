@@ -8,6 +8,7 @@ import com.hify.tool.api.ToolInvokeContext;
 import com.hify.tool.api.ToolProvider;
 import com.hify.tool.api.ToolResult;
 import com.hify.tool.api.ToolSpec;
+import com.hify.tool.internal.converter.ToolConverter;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
 import com.hify.tool.internal.mapper.ToolDefinitionMapper;
 import org.springframework.stereotype.Service;
@@ -35,12 +36,14 @@ public class ToolCatalogImpl implements ToolCatalog {
 
     private final Map<String, ToolProvider> providers = new LinkedHashMap<>();
     private final ToolDefinitionMapper tools;
+    private final ToolConverter converter;
 
-    public ToolCatalogImpl(List<ToolProvider> providers, ToolDefinitionMapper tools) {
+    public ToolCatalogImpl(List<ToolProvider> providers, ToolDefinitionMapper tools, ToolConverter converter) {
         for (ToolProvider provider : providers) {
             this.providers.put(provider.sourceType(), provider);
         }
         this.tools = tools;
+        this.converter = converter;
     }
 
     @Override
@@ -49,13 +52,7 @@ public class ToolCatalogImpl implements ToolCatalog {
                 .eq("enabled", true).orderByAsc("source_type", "tool_key"));
         List<ToolSpec> specs = new ArrayList<>();
         for (ToolDefinitionDO row : rows) {
-            specs.add(new ToolSpec(
-                    row.getToolKey(),
-                    row.getName(),
-                    row.getDescription(),
-                    row.getSchema(),
-                    row.getConfig(),
-                    row.getSourceType()));
+            specs.add(converter.toSpec(row));
         }
         return specs;
     }

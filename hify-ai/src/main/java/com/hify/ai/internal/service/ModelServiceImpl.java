@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,6 +109,20 @@ public class ModelServiceImpl implements ModelService {
     public ModelSummaryResp get(String publicId) {
         ModelDO model = requireExisting(publicId);
         return toSummary(model, providers.selectById(model.getProviderId()));
+    }
+
+    @Override
+    public List<ModelSummaryResp> listByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<ModelDO> rows = models.selectBatchIds(ids);
+        Map<Long, ModelProviderDO> providerById = loadProviders(rows);
+        List<ModelSummaryResp> result = new ArrayList<>(rows.size());
+        for (ModelDO row : rows) {
+            result.add(toSummary(row, providerById.get(row.getProviderId())));
+        }
+        return result;
     }
 
     @Override

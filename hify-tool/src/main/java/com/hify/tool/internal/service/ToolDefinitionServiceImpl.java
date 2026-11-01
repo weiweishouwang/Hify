@@ -6,11 +6,13 @@ import com.hify.shared.exception.BizException;
 import com.hify.shared.exception.ErrorCode;
 import com.hify.shared.id.IdGenerator;
 import com.hify.shared.mybatis.CursorCodec;
+import com.hify.tool.api.ToolBinding;
 import com.hify.tool.api.ToolCreateReq;
 import com.hify.tool.api.ToolDetailResp;
 import com.hify.tool.api.ToolListQuery;
 import com.hify.tool.api.ToolListResp;
 import com.hify.tool.api.ToolSourceType;
+import com.hify.tool.api.ToolSpec;
 import com.hify.tool.api.ToolSummaryResp;
 import com.hify.tool.api.ToolSyncResp;
 import com.hify.tool.api.ToolUpdateReq;
@@ -130,6 +132,23 @@ public class ToolDefinitionServiceImpl implements com.hify.tool.api.ToolDefiniti
     @Override
     public ToolDetailResp get(String publicId) {
         return converter.toDetail(requireExisting(publicId));
+    }
+
+    @Override
+    public List<ToolBinding> listBindingsByPublicIds(List<String> publicIds) {
+        if (publicIds == null || publicIds.isEmpty()) {
+            return List.of();
+        }
+        List<ToolDefinitionDO> rows = tools.selectList(new QueryWrapper<ToolDefinitionDO>()
+                .in("public_id", publicIds)
+                .orderByAsc("source_type", "tool_key"));
+        List<ToolBinding> bindings = new ArrayList<>(rows.size());
+        for (ToolDefinitionDO row : rows) {
+            bindings.add(new ToolBinding(row.getPublicId(),
+                    Boolean.TRUE.equals(row.getEnabled()),
+                    converter.toSpec(row)));
+        }
+        return bindings;
     }
 
     @Override

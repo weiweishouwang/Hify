@@ -1,5 +1,8 @@
 package com.hify.ai.api;
 
+import java.util.Collection;
+import java.util.List;
+
 /**
  * 模型管理的公开契约。
  *
@@ -23,6 +26,18 @@ public interface ModelService {
      * @return 模型摘要
      */
     ModelSummaryResp get(String publicId);
+
+    /**
+     * 按内部主键批量取模型。
+     *
+     * <p><b>给跨模块引用解析用</b>：别的模块在自己的表里只存模型主键
+     * （如 {@code ai_agent.model_id}），要显示模型名就得按主键反查。
+     * 一次查一批，避免列表页按行逐个查。
+     *
+     * @param ids 模型主键集合；为空时返回空列表
+     * @return 查到的模型摘要；查不到的主键不出现在结果里
+     */
+    List<ModelSummaryResp> listByIds(Collection<Long> ids);
 
     /**
      * 更新模型配置（展示名、用途、能力、启停等）。

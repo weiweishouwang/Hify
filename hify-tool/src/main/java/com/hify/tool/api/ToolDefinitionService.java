@@ -1,5 +1,7 @@
 package com.hify.tool.api;
 
+import java.util.List;
+
 /**
  * 工具定义的存取契约。
  *
@@ -23,6 +25,22 @@ public interface ToolDefinitionService {
      * @return 一页工具
      */
     ToolListResp list(ToolListQuery query);
+
+    /**
+     * 按对外 ID 批量取工具。
+     *
+     * <p><b>给跨模块引用解析用</b>：别的模块在自己的表里存工具的对外 ID
+     * （如 {@code ai_agent.tool_ids}），组装时要按 id 取出工具规格去拼 function
+     * calling 的 tools 定义。逐个 {@link #get(String)} 是 N+1 次跨模块调用，
+     * 而 {@link #list(ToolListQuery)} 是游标分页、一次拿不全。
+     *
+     * <p><b>停用的工具也会返回</b>（{@code enabled} 为 false）——
+     * 调用方要能区分「不存在」与「已停用」，两者的提示不一样。
+     *
+     * @param publicIds 工具对外 ID 集合；为空时返回空列表
+     * @return 查到的目录行；查不到的 ID 不出现在结果里
+     */
+    List<ToolBinding> listBindingsByPublicIds(List<String> publicIds);
 
     /**
      * 取工具详情。

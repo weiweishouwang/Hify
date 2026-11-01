@@ -1,6 +1,7 @@
 package com.hify.tool.internal.converter;
 
 import com.hify.tool.api.ToolDetailResp;
+import com.hify.tool.api.ToolSpec;
 import com.hify.tool.api.ToolSummaryResp;
 import com.hify.tool.internal.entity.ToolDefinitionDO;
 import com.hify.shared.crypto.SensitiveHeaderCipher;
@@ -33,6 +34,22 @@ public class ToolConverter {
         resp.setCreatedAt(row.getCreatedAt());
         resp.setUpdatedAt(row.getUpdatedAt());
         return resp;
+    }
+
+    /**
+     * 工具规格：进 function calling 的 tools 定义。
+     *
+     * <p>不含 {@code publicId} —— 目录行既有对外 ID 也有工具标识，
+     * 而 {@link ToolSpec} 是 provider 产出的，provider 只知道工具标识。
+     */
+    public ToolSpec toSpec(ToolDefinitionDO row) {
+        return new ToolSpec(
+                row.getToolKey(),
+                row.getName(),
+                row.getDescription(),
+                row.getSchema(),
+                row.getConfig(),
+                row.getSourceType());
     }
 
     /**

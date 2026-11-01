@@ -123,6 +123,21 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     @Override
+    public List<KnowledgeBaseSummaryResp> listByPublicIds(List<String> publicIds) {
+        if (publicIds == null || publicIds.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeBaseDO> rows = knowledgeBases.selectList(new QueryWrapper<KnowledgeBaseDO>()
+                .in("public_id", publicIds)
+                .orderByAsc("name"));
+        List<KnowledgeBaseSummaryResp> result = new ArrayList<>(rows.size());
+        for (KnowledgeBaseDO row : rows) {
+            result.add(converter.toSummary(row));
+        }
+        return result;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeBaseSummaryResp update(String publicId, KnowledgeBaseUpdateReq request) {
         if (request == null) {
