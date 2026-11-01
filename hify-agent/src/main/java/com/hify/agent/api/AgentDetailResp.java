@@ -6,6 +6,9 @@ import java.util.List;
 /** Agent 详情：含提示词、绑定项与参数区。 */
 public class AgentDetailResp {
 
+    /** 内部主键，供模块间关联使用。 */
+    private Long id;
+
     /** 对外 Agent 标识。 */
     private String publicId;
 
@@ -62,6 +65,14 @@ public class AgentDetailResp {
 
     public void setPublicId(String publicId) {
         this.publicId = publicId;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getName() {

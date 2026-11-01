@@ -33,6 +33,17 @@ public interface AgentService {
     AgentDetailResp get(String publicId);
 
     /**
+     * 按内部主键取 Agent 详情。
+     *
+     * <p><b>给跨模块只存 id 的场景用</b>：别的模块在自己的表里存 {@code ai_agent.id}
+     * （如 {@code conv_session.agent_id}），要显示 Agent 名字就得按主键反查。
+     *
+     * @param id Agent 的内部主键
+     * @return Agent 详情
+     */
+    AgentDetailResp getById(Long id);
+
+    /**
      * 更新 Agent。
      *
      * @param publicId Agent 的对外 ID

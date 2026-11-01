@@ -17,4 +17,16 @@ public interface AgentCatalog {
      * @return 组装结果；只有已发布的 Agent 能组装出来
      */
     AgentBundle assemble(String publicId);
+
+    /**
+     * 按内部主键组装一个可运行的 Agent。
+     *
+     * <p><b>给跨模块只存 id 的场景用</b>：别的模块在自己的表里存 {@code ai_agent.id}
+     * （如 {@code conv_session.agent_id}），要组装时就得按主键反查。
+     * 逐个 {@link #assemble(String)} 要先拿对外 ID，多一次往返。
+     *
+     * @param agentId Agent 的内部主键
+     * @return 组装结果；只有已发布的 Agent 能组装出来
+     */
+    AgentBundle assembleById(Long agentId);
 }

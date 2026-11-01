@@ -14,6 +14,7 @@ public class KnowledgeConverter {
     /** 知识库 DO → 摘要。 */
     public KnowledgeBaseSummaryResp toSummary(KnowledgeBaseDO row) {
         KnowledgeBaseSummaryResp resp = new KnowledgeBaseSummaryResp();
+        resp.setId(row.getId());
         resp.setPublicId(row.getPublicId());
         resp.setName(row.getName());
         resp.setDescription(row.getDescription());

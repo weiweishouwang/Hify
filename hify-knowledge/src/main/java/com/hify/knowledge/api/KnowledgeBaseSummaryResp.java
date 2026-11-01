@@ -5,6 +5,9 @@ import java.time.LocalDateTime;
 /** 知识库摘要。 */
 public class KnowledgeBaseSummaryResp {
 
+    /** 内部主键，供模块间关联使用。 */
+    private Long id;
+
     /** 对外知识库标识。 */
     private String publicId;
 
@@ -40,6 +43,14 @@ public class KnowledgeBaseSummaryResp {
 
     /** 更新时间(UTC)。 */
     private LocalDateTime updatedAt;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getPublicId() {
         return publicId;

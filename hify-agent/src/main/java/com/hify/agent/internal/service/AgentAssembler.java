@@ -78,6 +78,18 @@ public class AgentAssembler implements AgentCatalog {
                 AgentSupport.toParamConfig(row.getParamConfig()));
     }
 
+    @Override
+    public AgentBundle assembleById(Long agentId) {
+        if (agentId == null) {
+            throw AgentSupport.invalid("Agent 标识不能为空");
+        }
+        AgentDO row = agents.selectById(agentId);
+        if (row == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "Agent 不存在");
+        }
+        return assemble(row.getPublicId());
+    }
+
     private ModelSummaryResp resolveModel(AgentDO row) {
         if (row.getModelId() == null) {
             return null;

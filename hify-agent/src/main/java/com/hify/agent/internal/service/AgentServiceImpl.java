@@ -160,6 +160,21 @@ public class AgentServiceImpl implements AgentService {
     }
 
     @Override
+    public AgentDetailResp getById(Long id) {
+        if (id == null) {
+            throw AgentSupport.invalid("Agent 标识不能为空");
+        }
+        AgentDO row = agents.selectById(id);
+        if (row == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "Agent 不存在");
+        }
+        ModelSummaryResp model = resolveModel(row);
+        Map<String, Boolean> toolEnabled = loadToolAvailability(List.of(row));
+        Map<String, Boolean> knowledgeActive = loadKnowledgeAvailability(List.of(row));
+        return converter.toDetail(row, model, unavailableCount(row, toolEnabled, knowledgeActive));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public AgentDetailResp update(String publicId, AgentUpdateReq request) {
         if (request == null) {

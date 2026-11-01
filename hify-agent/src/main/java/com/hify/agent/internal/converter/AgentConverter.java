@@ -48,6 +48,7 @@ public class AgentConverter {
      */
     public AgentDetailResp toDetail(AgentDO row, ModelSummaryResp model, int unavailableCount) {
         AgentDetailResp resp = new AgentDetailResp();
+        resp.setId(row.getId());
         resp.setPublicId(row.getPublicId());
         resp.setName(row.getName());
         resp.setDescription(row.getDescription());
