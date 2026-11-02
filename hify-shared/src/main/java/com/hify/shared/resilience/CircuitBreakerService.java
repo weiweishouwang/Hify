@@ -69,6 +69,28 @@ public class CircuitBreakerService {
         }
     }
 
+    /**
+     * 执行一次流式逻辑调用：熔断在外、重试在内。
+     *
+     * <p>与 {@link #execute(String, Supplier)} 的区别只在重试的判定：
+     * 流式调用<b>只在还没吐出内容时才重试</b>（见
+     * {@link LlmRetryPolicy#executeStreaming}）。
+     *
+     * @param providerName   provider 标识（熔断器的粒度）
+     * @param action         要执行的流式调用
+     * @param producedOutput 判断「是否已经产出过内容」
+     */
+    public void executeStream(String providerName, Runnable action,
+                              java.util.function.BooleanSupplier producedOutput) {
+        CircuitBreaker breaker = getOrCreate(providerName);
+        try {
+            breaker.executeRunnable(() -> retryPolicy.executeStreaming(action, producedOutput));
+        } catch (CallNotPermittedException e) {
+            throw new LlmApiException(LlmErrorKind.UPSTREAM_ERROR,
+                    "熔断已打开，拒绝调用: " + providerName, e);
+        }
+    }
+
     /** 按配置装配熔断器。 */
     private static CircuitBreakerConfig buildConfig(CircuitBreakerProperties properties) {
         return CircuitBreakerConfig.custom()

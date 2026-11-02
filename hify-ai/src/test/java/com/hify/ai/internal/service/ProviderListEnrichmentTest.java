@@ -26,7 +26,8 @@ class ProviderListEnrichmentTest {
         var models = mock(ModelMapper.class);
         var health = mock(ProviderHealthMapper.class);
         var service = new ProviderServiceImpl(mock(ModelProviderMapper.class), models, health, queries,
-                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class));
+                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class),
+                mock(ProviderCapabilityTest.class));
         var summary = new ProviderSummaryResp();
         summary.setId(1L);
         summary.setPublicId("provider-one");
@@ -71,7 +72,8 @@ class ProviderListEnrichmentTest {
         cached.setHasNext(false);
         when(queries.list(any())).thenReturn(cached);
         var service = new ProviderServiceImpl(mock(ModelProviderMapper.class), models, health, queries,
-                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class));
+                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class),
+                mock(ProviderCapabilityTest.class));
         assertThat(service.list(new ProviderListQuery()).getItems()).isEmpty();
         verifyNoInteractions(models, health);
     }
@@ -93,7 +95,8 @@ class ProviderListEnrichmentTest {
         oldHealth.setStatus("UP");
         when(health.selectByIds(List.of(1L))).thenReturn(List.of(oldHealth));
         var service = new ProviderServiceImpl(mock(ModelProviderMapper.class), models, health, queries,
-                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class));
+                mock(ProviderCredentialCipher.class), mock(ProviderAdapterFactory.class),
+                mock(ProviderCapabilityTest.class));
         var row = (ProviderListItemResp) service.list(new ProviderListQuery()).getItems().getFirst();
         assertThat(row.getProviderHealth().getStatus()).isEqualTo("UNKNOWN");
         assertThat(row.getEnabledModelCount()).isZero();

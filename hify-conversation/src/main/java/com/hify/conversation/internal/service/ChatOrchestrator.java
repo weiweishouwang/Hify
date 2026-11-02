@@ -106,7 +106,7 @@ public class ChatOrchestrator {
                 // 每一轮模型调用前发一个 turn 事件：前端据此另起一条助手消息，
                 // 这样流式看到的分段与刷新后的历史一致
                 sink.emit("turn", payload("index", turnIndex++));
-                ModelTurn turn = callModel(bundle, toolNames, working, sink);
+                ModelTurn turn = callModel(bundle, toolNames, working, userId, sink);
                 accumulated.append(turn.text());
                 promptTokens += turn.promptTokens();
                 completionTokens += turn.completionTokens();
@@ -168,9 +168,12 @@ public class ChatOrchestrator {
 
     /** 调一次模型，把增量吐给事件出口。 */
     private ModelTurn callModel(AgentBundle bundle, ToolFunctionNames toolNames,
-                                List<ChatMessage> working, StreamEventSink sink) {
+                                List<ChatMessage> working, Long userId, StreamEventSink sink) {
         ChatRequest request = new ChatRequest();
         request.setModelPublicId(bundle.model().getPublicId());
+        // 用户 id 显式带进去：编排跑在 llmExecutor 上，那边的 CurrentUserHolder 是空的。
+        // ai 层用它做「每用户每 provider 在途上限」的限流（CLAUDE.md §3.5）。
+        request.setUserId(userId);
         request.setMessages(working);
         request.setTools(toolNames.chatTools());
         request.setParams(params(bundle));

@@ -194,4 +194,44 @@ class CircuitBreakerServiceTest {
         assertThatThrownBy(() -> breaker.executeSupplier(() -> "ok"))
                 .isInstanceOf(CallNotPermittedException.class);
     }
+
+    @Test
+    @DisplayName("流式调用：熔断在外、重试在内，一次逻辑调用只记一次失败")
+    void streamingCountsOneFailurePerLogicalCall() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> service.executeStream("openai", () -> {
+            attempts.incrementAndGet();
+            throw failure(LlmErrorKind.TIMEOUT);
+        }, () -> false))
+                .isInstanceOf(LlmApiException.class);
+
+        // 重试在熔断器内部发生：HTTP 尝试了 3 次，熔断器只看到 1 次失败
+        assertThat(attempts.get()).isEqualTo(3);
+        assertThat(service.getOrCreate("openai").getState())
+                .isEqualTo(io.github.resilience4j.circuitbreaker.CircuitBreaker.State.CLOSED);
+    }
+
+    @Test
+    @DisplayName("流式调用：已经产出内容后失败不再重试")
+    void streamingDoesNotRetryAfterOutput() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> service.executeStream("openai", () -> {
+            attempts.incrementAndGet();
+            throw failure(LlmErrorKind.TIMEOUT);
+        }, () -> true))
+                .isInstanceOf(LlmApiException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("流式调用：熔断打开后快速失败")
+    void streamingRejectedWhenOpen() {
+        callBreaker(service.getOrCreate("openai"), LlmErrorKind.UPSTREAM_ERROR, 10);
+
+        assertThatThrownBy(() -> service.executeStream("openai", () -> { }, () -> false))
+                .isInstanceOf(LlmApiException.class);
+    }
 }

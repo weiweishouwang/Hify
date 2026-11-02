@@ -6,8 +6,10 @@ import {
   ChatDotRound,
   Collection,
   Connection,
+  Document,
   Expand,
   Fold,
+  Operation,
   Setting,
   Share,
   SwitchButton,
@@ -43,7 +45,7 @@ function toggleCollapsed(): void {
 }
 
 /**
- * 侧边栏菜单：六项，与 router/index.ts 里的六条业务路由一一对应。
+ * 侧边栏菜单：与 router/index.ts 里的业务路由一一对应。
  * 加一项菜单要同时加一条路由，两处都要改。
  */
 const menus = [
@@ -54,6 +56,8 @@ const menus = [
   { path: '/agents', title: 'Agent 管理', icon: User },
   { path: '/workflows', title: '工作流', icon: Share },
   { path: '/chat', title: '对话', icon: ChatDotRound },
+  { path: '/logs', title: '日志', icon: Document },
+  { path: '/settings', title: '设置', icon: Operation },
 ]
 
 /** 独立页面（登录页、404）不带侧边栏与顶栏。 */

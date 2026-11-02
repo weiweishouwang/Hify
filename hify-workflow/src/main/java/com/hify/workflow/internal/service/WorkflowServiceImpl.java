@@ -13,6 +13,9 @@ import com.hify.workflow.api.WorkflowDefinition;
 import com.hify.workflow.api.WorkflowDetailResp;
 import com.hify.workflow.api.WorkflowListQuery;
 import com.hify.workflow.api.WorkflowListResp;
+import com.hify.workflow.api.WorkflowRunLogListResp;
+import com.hify.workflow.api.WorkflowRunLogQuery;
+import com.hify.workflow.api.WorkflowRunLogResp;
 import com.hify.workflow.api.WorkflowRunReq;
 import com.hify.workflow.api.WorkflowRunResp;
 import com.hify.workflow.api.WorkflowRunSummaryResp;
@@ -28,9 +31,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 工作流定义的增删改查与执行。
@@ -46,6 +52,9 @@ public class WorkflowServiceImpl implements WorkflowService {
 
     /** 运行记录列表上限。 */
     private static final int MAX_RUN_LIMIT = 100;
+
+    /** 日志页里入参 / 出参摘要的长度上限。 */
+    private static final int PREVIEW_LENGTH = 200;
 
     private final WorkflowMapper workflows;
     private final WorkflowRunMapper runs;
@@ -227,6 +236,81 @@ public class WorkflowServiceImpl implements WorkflowService {
                     row.getLatencyMs(), row.getErrorMessage(), row.getCreatedAt()));
         }
         return result;
+    }
+
+    @Override
+    public WorkflowRunLogListResp listRecentRuns(WorkflowRunLogQuery query) {
+        WorkflowRunLogQuery effective = query == null ? new WorkflowRunLogQuery() : query;
+        var wrapper = new QueryWrapper<WorkflowRunDO>();
+        if (effective.getStatus() != null && !effective.getStatus().isBlank()) {
+            wrapper.eq("status", effective.getStatus().trim());
+        }
+        if (effective.getCursor() != null && !effective.getCursor().isBlank()) {
+            var cursor = CursorCodec.decode(effective.getCursor());
+            wrapper.apply("(created_at, id) < ({0}, {1})", cursor.createdAt(), cursor.id());
+        }
+        int size = size(effective);
+        wrapper.orderByDesc("created_at", "id").last("LIMIT " + (size + 1));
+
+        List<WorkflowRunDO> rows = runs.selectList(wrapper);
+        boolean hasNext = rows.size() > size;
+        List<WorkflowRunDO> visible = rows.subList(0, Math.min(rows.size(), size));
+
+        Map<Long, WorkflowDefinitionDO> definitions = definitionsById(visible);
+        List<WorkflowRunLogResp> items = new ArrayList<>(visible.size());
+        for (WorkflowRunDO row : visible) {
+            WorkflowDefinitionDO definition = definitions.get(row.getDefinitionId());
+            items.add(new WorkflowRunLogResp(row.getId(),
+                    definition == null ? null : definition.getPublicId(),
+                    definition == null ? null : definition.getName(),
+                    row.getStatus(), row.getStepCount(), row.getLatencyMs(),
+                    preview(row.getInput()), preview(row.getOutput()),
+                    row.getErrorMessage(), row.getCreatedAt()));
+        }
+
+        WorkflowRunLogListResp result = new WorkflowRunLogListResp();
+        result.setItems(items);
+        result.setHasNext(hasNext);
+        if (hasNext) {
+            WorkflowRunDO last = visible.getLast();
+            result.setNextCursor(CursorCodec.encode(last.getCreatedAt(), last.getId()));
+        }
+        return result;
+    }
+
+    /** 批量取这些运行记录所属的工作流定义。 */
+    private Map<Long, WorkflowDefinitionDO> definitionsById(List<WorkflowRunDO> rows) {
+        Set<Long> ids = new LinkedHashSet<>();
+        for (WorkflowRunDO row : rows) {
+            if (row.getDefinitionId() != null) {
+                ids.add(row.getDefinitionId());
+            }
+        }
+        Map<Long, WorkflowDefinitionDO> result = new HashMap<>();
+        if (ids.isEmpty()) {
+            return result;
+        }
+        for (WorkflowDefinitionDO definition : workflows.selectBatchIds(ids)) {
+            result.put(definition.getId(), definition);
+        }
+        return result;
+    }
+
+    /** 入参 / 出参的摘要：可能很大，日志页只放截断后的 JSON。 */
+    private String preview(Map<String, Object> value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        String text = json.toJson(value);
+        return text.length() <= PREVIEW_LENGTH ? text : text.substring(0, PREVIEW_LENGTH) + "…";
+    }
+
+    /** 运行记录列表的每页条数。 */
+    private static int size(WorkflowRunLogQuery query) {
+        if (query.getSize() == null) {
+            return PageQuery.DEFAULT_SIZE;
+        }
+        return Math.max(1, Math.min(query.getSize(), PageQuery.MAX_SIZE_ADMIN));
     }
 
     // ── 内部方法 ────────────────────────────────────────────────────

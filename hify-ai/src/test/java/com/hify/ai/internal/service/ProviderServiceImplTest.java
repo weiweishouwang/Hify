@@ -38,6 +38,7 @@ class ProviderServiceImplTest {
     @Mock ProviderConfigQueryService queries;
     @Mock ProviderAdapterFactory adapterFactory;
     @Mock ProviderAdapter adapter;
+    @Mock ProviderCapabilityTest capability;
     ProviderCredentialCipher cipher;
     ProviderServiceImpl service;
 
@@ -46,7 +47,9 @@ class ProviderServiceImplTest {
         lenient().when(providers.findIdByName(anyString())).thenReturn(null);
         cipher = new ProviderCredentialCipher(Base64.getEncoder().encodeToString(new byte[32]));
         lenient().when(adapterFactory.getAdapter(anyString())).thenReturn(adapter);
-        service = new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory);
+        lenient().when(capability.test(any()))
+                .thenReturn(ProviderCapabilityTest.CapabilityResult.supported("gpt-4o", 5L));
+        service = new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory, capability);
     }
 
     static ProviderCreateReq createRequest() {

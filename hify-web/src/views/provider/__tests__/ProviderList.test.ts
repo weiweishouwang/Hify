@@ -43,6 +43,17 @@ describe('ProviderList real API integration', () => {
     }
   })
 
+  it('reports the capability layer of the connectivity test', async () => {
+    const warnings: string[] = []
+    const spy = vi.spyOn(ElMessage, 'warning').mockImplementation(message => { warnings.push(String(message)); return { close: () => {} } as never })
+    api.testConnection.mockResolvedValue({ connected: true, latencyMs: 12, capabilitySupported: false, capabilityMessage: '模型没有回出工具调用' })
+    await openPage()
+    await wrapper.get('[data-testid="test-provider-one"]').trigger('click'); await flushPromises()
+    expect(warnings.join()).toContain('工具调用不可用')
+    expect(warnings.join()).toContain('模型没有回出工具调用')
+    spy.mockRestore()
+  })
+
   it('submits create and update with real payload and never prefills saved keys', async () => {
     await openPage()
     await button('新增提供商').trigger('click'); await flushPromises()

@@ -116,4 +116,34 @@ class RateLimiterTest {
 
         assertThat(rateLimiter.currentCount("user:1:openai")).isZero();
     }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @DisplayName("在途计数：在上限之内拿到名额")
+    void 在途拿到名额() {
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(2L);
+
+        assertThat(rateLimiter.tryAcquireInFlight("hify:llm:inflight:1:openai", 3, Duration.ofSeconds(120)))
+                .isTrue();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @DisplayName("在途计数：超限时脚本回滚，没有名额")
+    void 在途超限() {
+        // 脚本在超限时把刚加的那个减回去并返回 0
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), any(), any())).thenReturn(0L);
+
+        assertThat(rateLimiter.tryAcquireInFlight("hify:llm:inflight:1:openai", 3, Duration.ofSeconds(120)))
+                .isFalse();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @DisplayName("释放一个在途名额")
+    void 释放在途名额() {
+        rateLimiter.releaseInFlight("hify:llm:inflight:1:openai");
+
+        verify(redisTemplate).execute(any(RedisScript.class), eq(java.util.List.of("hify:llm:inflight:1:openai")));
+    }
 }

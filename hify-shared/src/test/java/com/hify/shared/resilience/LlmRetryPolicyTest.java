@@ -140,4 +140,59 @@ class LlmRetryPolicyTest {
         assertThat(policy.planFor(LlmErrorKind.AUTH_FAILED).shouldRetry()).isFalse();
         assertThat(policy.planFor(LlmErrorKind.UPSTREAM_ERROR).shouldRetry()).isFalse();
     }
+
+    @Test
+    @DisplayName("流式：还没吐出内容时可以重试")
+    void streamingRetriesBeforeOutput() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> policy.executeStreaming(() -> {
+            attempts.incrementAndGet();
+            throw failure(LlmErrorKind.TIMEOUT);
+        }, () -> false))
+                .isInstanceOf(LlmApiException.class);
+
+        assertThat(attempts.get()).isEqualTo(3);
+        assertThat(slept).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(1));
+    }
+
+    @Test
+    @DisplayName("流式：已经吐出内容后不再重试（重复内容会拼进用户的流）")
+    void streamingDoesNotRetryAfterOutput() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> policy.executeStreaming(() -> {
+            attempts.incrementAndGet();
+            throw failure(LlmErrorKind.TIMEOUT);
+        }, () -> true))
+                .isInstanceOf(LlmApiException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+        assertThat(slept).isEmpty();
+    }
+
+    @Test
+    @DisplayName("流式：鉴权失败不重试")
+    void streamingDoesNotRetryAuthFailure() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> policy.executeStreaming(() -> {
+            attempts.incrementAndGet();
+            throw failure(LlmErrorKind.AUTH_FAILED);
+        }, () -> false))
+                .isInstanceOf(LlmApiException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("流式：成功只调一次")
+    void streamingSuccessCallsOnce() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        policy.executeStreaming(attempts::incrementAndGet, () -> false);
+
+        assertThat(attempts.get()).isEqualTo(1);
+        assertThat(slept).isEmpty();
+    }
 }

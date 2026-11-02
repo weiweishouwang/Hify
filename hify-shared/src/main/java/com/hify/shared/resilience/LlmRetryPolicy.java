@@ -101,6 +101,31 @@ public class LlmRetryPolicy {
         }
     }
 
+    /**
+     * 执行一次流式调用，失败时按规则重试。
+     *
+     * <p><b>只在「还没吐出任何内容」时重试</b>（CLAUDE.md §3.5）：
+     * 已经输出过内容再重试，重复的内容会被拼进用户的流里，用户会看到同一段话出现两次。
+     * 宁可让这次流失败，也不能给用户一段重复的输出。
+     *
+     * @param action           要执行的流式调用
+     * @param producedOutput   判断「是否已经产出过内容」；重试前会检查它
+     */
+    public void executeStreaming(Runnable action, java.util.function.BooleanSupplier producedOutput) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                action.run();
+                return;
+            } catch (LlmApiException e) {
+                RetryPlan plan = planFor(e.getKind());
+                if (attempt >= plan.maxAttempts() || producedOutput.getAsBoolean()) {
+                    throw e;
+                }
+                sleep(plan.intervalBeforeAttempt(attempt));
+            }
+        }
+    }
+
     private void sleep(Duration duration) {
         try {
             sleeper.sleep(duration);

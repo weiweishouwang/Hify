@@ -151,13 +151,13 @@ public class WorkflowEngine {
                 String model = node.getModel() == null || node.getModel().isBlank()
                         ? definition.getModel() : node.getModel();
                 String prompt = templates.resolve(node.getPrompt(), variables);
-                return callModel(model, prompt, node.getParams(), variables, null);
+                return callModel(model, prompt, node.getParams(), variables, null, userId);
             }
             case AGENT -> {
                 AgentBundle bundle = agents.assemble(node.getAgent());
                 String system = templates.resolve(bundle.promptTemplate(), variables);
                 String userText = templates.resolve(node.getInput(), variables);
-                return callModel(bundle.model().getPublicId(), userText, paramsOf(bundle), variables, system);
+                return callModel(bundle.model().getPublicId(), userText, paramsOf(bundle), variables, system, userId);
             }
             case TOOL -> {
                 ToolBinding binding = binding(node.getTool(), bindings);
@@ -201,12 +201,15 @@ public class WorkflowEngine {
      * 工作流里的模型调用不挂工具（CLAUDE.md §2.1 的编排层边界）。
      */
     private String callModel(String modelPublicId, String userText, Map<String, Object> params,
-                             Map<String, Object> variables, String system) {
+                             Map<String, Object> variables, String system, Long userId) {
         if (modelPublicId == null || modelPublicId.isBlank()) {
             throw WorkflowSupport.invalid("工作流没有指定模型");
         }
         ChatRequest request = new ChatRequest();
         request.setModelPublicId(modelPublicId);
+        // 用户 id 显式带进去：编排跑在 llmExecutor 上，那边的 CurrentUserHolder 是空的。
+        // ai 层用它做「每用户每 provider 在途上限」的限流（CLAUDE.md §3.5）。
+        request.setUserId(userId);
         List<ChatMessage> messages = new ArrayList<>();
         if (system != null && !system.isBlank()) {
             messages.add(ChatMessage.system(system));

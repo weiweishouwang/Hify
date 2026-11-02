@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.shared.json.JsonUtils;
 import com.hify.workflow.api.WorkflowCreateReq;
 import com.hify.workflow.api.WorkflowListQuery;
+import com.hify.workflow.api.WorkflowRunLogQuery;
 import com.hify.workflow.api.WorkflowUpdateReq;
 import com.hify.workflow.internal.converter.WorkflowConverter;
 import com.hify.workflow.internal.entity.WorkflowDefinitionDO;
+import com.hify.workflow.internal.entity.WorkflowRunDO;
 import com.hify.workflow.internal.mapper.WorkflowMapper;
 import com.hify.workflow.internal.mapper.WorkflowRunMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -167,5 +170,34 @@ class WorkflowServiceImplTest {
                 .isInstanceOf(com.hify.shared.exception.BizException.class)
                 .satisfies(thrown -> assertThat(((com.hify.shared.exception.BizException) thrown).getErrorCode())
                         .isEqualTo(com.hify.shared.exception.ErrorCode.NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("运行记录列表带上工作流名字与出入参摘要")
+    void 运行记录列表() {
+        var run = new WorkflowRunDO();
+        run.setId(5L);
+        run.setDefinitionId(1L);
+        run.setStatus("failed");
+        run.setStepCount(4);
+        run.setLatencyMs(800);
+        run.setInput(Map.of("question", "怎么退货"));
+        run.setOutput(Map.of("answer", "联系客服"));
+        run.setErrorMessage("节点 llm 失败");
+        run.setCreatedAt(LocalDateTime.of(2026, 11, 2, 4, 0));
+        when(runs.selectList(any())).thenReturn(List.of(run));
+        when(workflows.selectBatchIds(any())).thenReturn(List.of(entity()));
+
+        var result = service.listRecentRuns(new WorkflowRunLogQuery());
+
+        assertThat(result.getItems()).hasSize(1);
+        var item = result.getItems().getFirst();
+        assertThat(item.definitionName()).isEqualTo("售后流程");
+        assertThat(item.definitionPublicId()).isEqualTo("01WORKFLOW00000000000000001");
+        assertThat(item.status()).isEqualTo("failed");
+        assertThat(item.stepCount()).isEqualTo(4);
+        assertThat(item.inputPreview()).contains("怎么退货");
+        assertThat(item.outputPreview()).contains("联系客服");
+        assertThat(item.errorMessage()).isEqualTo("节点 llm 失败");
     }
 }

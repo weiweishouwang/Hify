@@ -253,7 +253,7 @@ hify-web/
 ├── env.d.ts           Vite 环境变量类型
 └── src/
     ├── api/           后端接口模块：health.ts / auth.ts / chat.ts + sse.ts（SSE 客户端）
-    ├── views/         页面：provider/（模型提供商，列表用 HifyTable + HifyFormDialog）、agent / chat / knowledge / workflow / log（占位页）
+    ├── views/         页面：provider/（模型提供商，列表用 HifyTable + HifyFormDialog）、agent / chat / knowledge / workflow / log（日志，两个页签）/ settings（系统设置，只读）
     ├── components/    通用组件：HifyTable（列表表格）、HifyFormDialog（表单弹窗）、PageHeader（页面标题区）、chat/（流式对话面板、消息气泡、工具调用中间态）、PendingPanel（占位面板）
     ├── composables/  通用逻辑：useRequest（请求三态）、useConfirm（删除确认）、useMediaQuery（媒体查询）
     ├── layouts/       BlankLayout（独立页面用的全屏容器：登录页、404）
@@ -508,7 +508,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **base_url 存协议根，路径由适配器自己拼** —— openai 档拼 `/chat/completions`，anthropic 档拼 `/messages`，ollama 档拼 `/api/chat`。**各家的 base_url 结尾不统一**（anthropic 官方带 `/v1`，Ollama 的 Anthropic 兼容层是裸 host），别在适配器里写 if 去猜路径
 - **api_key 允许为空** —— Ollama / vLLM / LM Studio 不鉴权；数据库里 `ai_model_provider.api_key_encrypted` 本来就允许 NULL，别在前端表单里设成必填
 - **Ollama 原生走 NDJSON，不是 SSE** —— `Content-Type: application/x-ndjson`，一行一个完整 JSON，末帧 `done:true` 才带 usage（字段是 `prompt_eval_count` / `eval_count`，不是 `prompt_tokens` / `completion_tokens`）；tool call 的 `arguments` 直接是 JSON 对象（OpenAI 兼容层给的是 JSON 字符串片段）。**`shared.http.SseFrameReader` 现在只切 SSE 帧，要接 Ollama 得先抽成「切 SSE 帧」与「按行切 JSON」两种策略**
-- **"OpenAI 兼容"是不支持的参数静默丢弃，不是报错** —— Ollama 的 `/v1` 层丢掉 `tool_choice`（强制工具调用失效）、忽略 `num_ctx`（模型按 4096 上下文加载，超了不报错只是开始胡言乱语）、丢掉 `logprobs` / `n` / 远程 `image_url`。**连通性测试必须测两层**：① 协议连通（最小请求通不通）② 能力连通（带一个 `tools` 定义跑一轮，看能不能回出 tool_calls）—— 只测第一层，Ollama 会显示「正常」但 Agent 的工具循环是坏的
+- **"OpenAI 兼容"是不支持的参数静默丢弃，不是报错** —— Ollama 的 `/v1` 层丢掉 `tool_choice`（强制工具调用失效）、忽略 `num_ctx`（模型按 4096 上下文加载，超了不报错只是开始胡言乱语）、丢掉 `logprobs` / `n` / 远程 `image_url`。**连通性测试必须测两层**：① 协议连通（最小请求通不通）② 能力连通（带一个 `tools` 定义跑一轮，看能不能回出 tool_calls）—— 只测第一层，Ollama 会显示「正常」但 Agent 的工具循环是坏的。**能力连通走真实链路**（`ChatService` 而不是适配器），顺带把重试、熔断、在途限流都跑一遍；探针工具只有一个布尔参数，明确要求模型调用它。三种结果要分清：通过 / 不通过（上游回文字 = tools 被静默丢弃）/ 没测（接入点下没有启用的对话模型）；「上游报错」与「上游不支持」提示语不同
 - **传输层用阻塞式的 `shared.http.LlmHttpClient`，不用 WebClient 响应式** —— `post()` 走 RestTemplate（连接 5s / 读 60s），`stream()` 走 OkHttp（连接 5s / 读 120s）自己解析 SSE 帧
 - **调用方必须把它提交到 `llmExecutor` 线程池** —— 两个方法都阻塞，直接在 Controller 里调就是拿 Tomcat worker 线程去等 LLM，60 秒一次的非流式调用能把 200 个线程全锁死
 - **`llmExecutor` 的 50 个线程就是并发 LLM 调用的天花板** —— 队列（100）满且 50 个线程都在跑时，`CallerRunsPolicy` 会让**提交方线程自己执行**；提交方通常是 Tomcat 线程，于是照样被占住。并发模型按这个数算，不要按「Tomcat 有 200 线程」算
@@ -518,10 +518,11 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **JSON 输出用 Spring Boot 自带的 `StructuredLogEncoder`（logstash 格式）**，别自己写编码器 —— MDC 里的 `traceId` / `spanId` 会自动作为字段带出去，日志与链路追踪能直接对上
 - **`logback-spring.xml` 只在 Spring Boot 启动时生效** —— Logback 本身不认识这个文件名（它只认 `logback.xml` / `logback-test.xml`），所以各模块的单元测试（不起 Spring 上下文）走 Logback 默认配置，不受这个文件影响
 - **失败统一转成 `LlmApiException`，用 `LlmErrorKind` 区分** `TIMEOUT` / `AUTH_FAILED` / `RATE_LIMITED` / `UPSTREAM_ERROR`，不靠 message 文本判断。**上游的错误响应体只进 DEBUG 日志，不进异常 message** —— 上游报错文本可能夹带用户输入，随异常一路回显到终端用户那里
-- **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个 `llmExecutor`
+- **每用户每 provider 在途上限 3**（Redis 原子计数），防单用户多标签页吃光整个 `llmExecutor`。**实现在 `hify-ai` 的 `ChatServiceImpl`**：调用前 `RateLimiter.tryAcquireInFlight` 占名额、finally 里 `releaseInFlight` 释放，键 `hify:llm:inflight:{userId}:{providerPublicId}`，兜底 TTL 120 秒。**user id 由编排层显式带进 `ChatRequest`**（编排跑在 `llmExecutor` 上，那边的 `CurrentUserHolder` 是空的）；没有 user id 时不限流（后台任务不该算到某个人头上）
 - **超时**：连接 5s、普通请求读 60s、流式读 120s。**流式的读超时是 socket 空闲超时**（OkHttp 的 `readTimeout`）—— 模型慢但一直在吐字不会触发，流卡住才会。整体时长没设硬上限（`callTimeout` 未设），非流式路径靠 60s 读超时兜底，流式路径靠上游的结束信号与业务侧会话超时兜底
 - **重试规则在 `shared.resilience.LlmRetryPolicy`**：网络超时重试 2 次（固定间隔 1s）；限流退避重试 2 次（2s → 4s）；**认证失败不重试**（换把 key 再试也一样失败，纯白等）；上游 5xx 不重试，交给熔断器判断（连续 5xx 由熔断器把整个 provider 断开，而不是靠重试硬扛）。**流式只在首个 chunk 之前重试**（已输出内容后重试会把重复内容拼进用户的流）；**永不重试工具执行**（有副作用）
-- **熔断按 provider 独立**（`shared.resilience.CircuitBreakerService`，参数在 `application.yml` 的 `hify.resilience.circuit-breaker` 下：窗口 10 次 / 失败率 50% / 开放 30s / 半开 3 次），且 `ignoreExceptions` 排除 429 与鉴权失败（429 是"你太频繁"不是"我坏了"，算进失败率会误开熔断）。**熔断在外、重试在内**：熔断打开时直接快速失败不重试；一次逻辑调用内部重试 3 次仍失败，熔断器只记 1 次失败（失败率算的是逻辑调用，不是 HTTP 尝试）
+- **熔断按 provider 独立**（`shared.resilience.CircuitBreakerService`，参数在 `application.yml` 的 `hify.resilience.circuit-breaker` 下：窗口 10 次 / 失败率 50% / 开放 30s / 半开 3 次），且 `ignoreExceptions` 排除 429 与鉴权失败（429 是"你太频繁"不是"我坏了"，算进失败率会误开熔断）。**熔断在外、重试在内**：熔断打开时直接快速失败不重试；一次逻辑调用内部重试 3 次仍失败，熔断器只记 1 次失败（失败率算的是逻辑调用，不是 HTTP 尝试）。**熔断的粒度是「接入点实例」（`provider.public_id`），不是协议档位** —— 两个不同的 OpenAI 兼容端点要各自独立，一个 key 失效不能把其余四个一起熔掉。**只接在对话调用上**：目录探测与健康检查不走在熔断器后面，否则熔断打开时探测也打不出去，「熔断打开」与「接入点真挂了」就分不开了
+- **流式只在吐出内容之前重试** —— 已经吐给用户的文本，重试会带来重复内容。宁可让这次流失败，也不能让用户看到同一段话出现两次。判定靠一个「是否已产出内容」的标志：文本与工具调用都算产出（工具调用是上游明确表达的意图，重试会丢掉它）
 - **降级链是模型接入点配置的一部分**，不在 Agent 里（Agent 的提示词是针对某模型调过的）。**已输出内容后不能再降级**；降级必须对用户可见（响应带 provider 标识）
 - **上下文必须有界**：`max-context-tokens: 16384`、`max-output-tokens: 4096`、`spring.codec.max-in-memory-size: 2MB`（约束的是**入站**请求体；出站不用 WebClient 了，没有它 256KB 那个默认限制）。加内存解决不了上下文无界
 - **MCP**：官方 Java SDK 但仅 Tier 2，**第 1 周必须做 spike**（stdio + Streamable HTTP 双传输、`tools/list` 分页、重连语义）。SDK 默认 HTTP 传输是阻塞的 JDK HttpClient —— **MCP 调用同样要提交到 `llmExecutor`**，否则一次慢调用占住 Tomcat 线程。stdio 模式每个 Pod 各 spawn 一个进程、副本间状态不一致 → **MCP server 应独立部署用 HTTP transport**；server 配置仅管理员可见可改
@@ -570,6 +571,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **编排跑在线程池里，用户 id 必须显式带进去** —— 上游调用与工具执行都是阻塞的，编排跑在 `llmExecutor` 上；那边的 `CurrentUserHolder` 是空的（§3.1 C5：线程池复用会串号）。**做法**：在 HTTP 线程上取用户 id，显式传进编排器 —— 串号比取不到更糟
 - **一期没有认证时，会话归属落到内置的「开发用户」** —— `conv_session.user_id` 是 NOT NULL 外键指向 `user.id`，而认证方案还没定（§五）、登录接口不存在。**做法**：`hify-shared` 提供 `CurrentUserService.currentUserId()` —— 有登录上下文（`CurrentUserHolder` 里有人）就用那个人，没有就落到一个内置的 `username='developer'` 的用户（不存在就幂等创建）。**为什么**：把 `user_id` 改成可空等于回避「会话是谁的」这个问题；在 conversation 模块直接查 `user` 表违反「跨模块只走 api 包」；自己实现登录等于替用户把认证方案定死。**代价**：一期所有会话看起来属于同一个人。**将来接上登录只要让登录拦截器往 `CurrentUserHolder` 里塞用户，这里一行都不用改**
 - **跨域在 api 侧配，且默认关闭** —— §2.3 的方案 A（Ingress 直连 api）下前后端不同源，api 侧必须处理 CORS；方案 B 与开发环境同源，不需要。**做法**：`hify.cors.allowed-origins` 默认为空 = 不注册任何跨域规则；配了就只允许那几个来源，令牌走 `Authorization` 头（不是 Cookie）所以不带凭据。**为什么不用通配符**：「通配 + 允许凭据」是浏览器直接拒绝的组合，写上去也不生效；而真开成通配等于把内部工具的接口开给任意站点。**代价**：方案 A 下必须记得配这个环境变量，否则前端全量报 CORS 错误（K8s 的 ConfigMap 里写了示例值，apply 的人会看到）
+- **控制台的「日志」页拆成两个页签，各走各的接口** —— 对话运行记录与工作流运行记录分属两个模块，各自有表。**为什么不做成 app 层的聚合接口**：合并两路游标分页很麻烦（下一页的游标有两个），两个页签各自翻页更简单，也让模块边界保持干净（前端直接调各自的模块）
+- **控制台的「设置」页是只读的** —— 回答三个问题：跑的是哪个版本、依赖通不通、关键的运行参数是多少。**为什么只读**：认证方案还没定（§五），也没有多环境切换，一期没有需要用户在页面上改的配置；有可改的东西再加写入接口。**依赖状态探不通一个只影响它自己那一行** —— 有一个不通恰恰是要显示出来的，不能让整页挂掉
 - **静态资源与单页应用回落归 hify-app** —— 前端是 history 路由，刷新 `/agents` 会向服务器要这个路径，服务器上没有这个文件。**做法**：资源处理器 + 回落解析器，找不到静态文件就回落到 `index.html`；**回落排除 `/api` 与 `/actuator`**（这两个前缀下找不到资源就该是 404 JSON，而不是一份让前端 `JSON.parse` 炸掉的 HTML）。**为什么用资源处理器而不是兜底 Controller**：资源处理器的 order 在 `RequestMappingHandlerMapping` 之后，业务接口优先命中，不会被兜底吃掉。**代价**：Spring Boot 的默认静态资源映射要关掉（`spring.web.resources.add-mappings: false`）—— 它也注册在 `/**` 上，后注册的会顶掉先注册的，谁先谁后取决于装配顺序。**替代方案**：前端改 hash 路由 —— URL 带 `#`，分享链接难看（已否决）
 
 ### 技术选型

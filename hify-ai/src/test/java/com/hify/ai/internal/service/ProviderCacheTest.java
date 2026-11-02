@@ -183,10 +183,15 @@ class ProviderCacheTest {
         @Bean ProviderConfigQueryService queries(ModelProviderMapper providers, ModelMapper models) {
             return new ProviderConfigQueryService(providers, models);
         }
+        @Bean ProviderCapabilityTest capability() {
+            return org.mockito.Mockito.mock(ProviderCapabilityTest.class);
+        }
+
         @Bean ProviderServiceImpl service(ModelProviderMapper providers, ModelMapper models,
                                           ProviderHealthMapper health, ProviderConfigQueryService queries,
-                                          ProviderCredentialCipher cipher, ProviderAdapterFactory adapterFactory) {
-            return new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory);
+                                          ProviderCredentialCipher cipher, ProviderAdapterFactory adapterFactory,
+                                          ProviderCapabilityTest capability) {
+            return new ProviderServiceImpl(providers, models, health, queries, cipher, adapterFactory, capability);
         }
     }
 

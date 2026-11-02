@@ -27,6 +27,16 @@ public interface ConversationService {
     ConversationListResp list(ConversationListQuery query);
 
     /**
+     * 按游标分页列出当前用户的对话运行记录。
+     *
+     * <p>控制台「日志」页用。运行记录是事件流，不随会话删除而消失。
+     *
+     * @param query 查询条件
+     * @return 一页运行记录
+     */
+    ConversationRunListResp listRuns(ConversationRunQuery query);
+
+    /**
      * 取会话详情。
      *
      * @param publicId 会话的对外 ID

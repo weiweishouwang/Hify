@@ -80,6 +80,15 @@ export interface ProviderUpdatePayload extends ProviderCreatePayload {
 }
 
 export interface ConnectionTestResult {
+  /** 协议连通：最小请求通不通。 */
   connected: boolean
   latencyMs: number
+  /** 能力连通：带 tools 定义跑一轮能不能回出 tool_calls；null 表示没测。 */
+  capabilitySupported?: boolean | null
+  /** 能力连通的说明：为什么没测 / 为什么失败。 */
+  capabilityMessage?: string
+  /** 能力连通测的是哪个模型。 */
+  capabilityModel?: string
+  /** 能力连通的耗时（一次真实模型调用，通常是秒级）。 */
+  capabilityLatencyMs?: number
 }

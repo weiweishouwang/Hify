@@ -15,6 +15,18 @@ public class ChatRequest {
     /** 模型的对外标识（{@code ai_model.public_id}）。 */
     private String modelPublicId;
 
+    /**
+     * 调用者用户 id。
+     *
+     * <p><b>用来做「每用户每 provider 在途上限」的限流</b>（CLAUDE.md §3.5）：
+     * 一个人开多个标签页，不能让他把整个 LLM 连接池吃光。
+     *
+     * <p><b>显式携带，不靠 ThreadLocal</b> —— 调用跑在 {@code llmExecutor} 上，
+     * 那边的 {@code CurrentUserHolder} 是空的（线程池会串号）。
+     * 没有用户上下文时（比如后台任务）可以不填，此时不做限流。
+     */
+    private Long userId;
+
     /** 上下文消息，按时间顺序。 */
     private List<ChatMessage> messages;
 
@@ -30,6 +42,14 @@ public class ChatRequest {
 
     public void setModelPublicId(String modelPublicId) {
         this.modelPublicId = modelPublicId;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public List<ChatMessage> getMessages() {

@@ -4,6 +4,8 @@ import com.hify.workflow.api.WorkflowCreateReq;
 import com.hify.workflow.api.WorkflowDetailResp;
 import com.hify.workflow.api.WorkflowListQuery;
 import com.hify.workflow.api.WorkflowListResp;
+import com.hify.workflow.api.WorkflowRunLogListResp;
+import com.hify.workflow.api.WorkflowRunLogQuery;
 import com.hify.workflow.api.WorkflowRunReq;
 import com.hify.workflow.api.WorkflowRunResp;
 import com.hify.workflow.api.WorkflowRunSummaryResp;
@@ -86,6 +88,16 @@ public class WorkflowController {
             @Valid @PathVariable("id") @Pattern(regexp = PUBLIC_ID_PATTERN, message = INVALID_ID) String id,
             @Valid @RequestBody(required = false) WorkflowRunReq request) {
         return dispatcher.run(id, request);
+    }
+
+    /**
+     * 全部工作流的运行记录（控制台日志页）。
+     *
+     * <p>路径是字面量 {@code /runs}，比 {@code /{id}/runs} 更具体。
+     */
+    @GetMapping("/runs")
+    public Result<WorkflowRunLogListResp> recentRuns(@Valid @ModelAttribute WorkflowRunLogQuery query) {
+        return Result.ok(service.listRecentRuns(query));
     }
 
     /** 工作流的运行记录，按时间倒序。 */

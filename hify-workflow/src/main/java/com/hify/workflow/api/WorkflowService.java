@@ -72,4 +72,14 @@ public interface WorkflowService {
      * @return 运行记录
      */
     List<WorkflowRunSummaryResp> listRuns(String publicId, Integer limit);
+
+    /**
+     * 按游标分页列出全部工作流的运行记录。
+     *
+     * <p>控制台「日志」页用 —— 跨工作流看最近跑过什么。
+     *
+     * @param query 查询条件
+     * @return 一页运行记录
+     */
+    WorkflowRunLogListResp listRecentRuns(WorkflowRunLogQuery query);
 }

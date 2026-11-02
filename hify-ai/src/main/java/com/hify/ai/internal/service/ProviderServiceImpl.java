@@ -47,16 +47,18 @@ public class ProviderServiceImpl implements ProviderService {
     private final ProviderConfigQueryService queries;
     private final ProviderCredentialCipher cipher;
     private final ProviderAdapterFactory adapterFactory;
+    private final ProviderCapabilityTest capability;
 
     public ProviderServiceImpl(ModelProviderMapper providers, ModelMapper models, ProviderHealthMapper health,
                                ProviderConfigQueryService queries, ProviderCredentialCipher cipher,
-                               ProviderAdapterFactory adapterFactory) {
+                               ProviderAdapterFactory adapterFactory, ProviderCapabilityTest capability) {
         this.providers = providers;
         this.models = models;
         this.health = health;
         this.queries = queries;
         this.cipher = cipher;
         this.adapterFactory = adapterFactory;
+        this.capability = capability;
     }
 
     @Override
@@ -181,6 +183,14 @@ public class ProviderServiceImpl implements ProviderService {
         var response = new ProviderConnectionTestResp();
         response.setConnected(true);
         response.setLatencyMs(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        // 第二层：能力连通（CLAUDE.md §3.5）。
+        // 只测协议连通的话，Ollama 的 /v1 兼容层会显示「正常」，
+        // 但它把 tools 定义悄悄丢了 —— 工具循环是坏的，要到对话时才发现。
+        var capabilityResult = capability.test(provider);
+        response.setCapabilitySupported(capabilityResult.supported());
+        response.setCapabilityMessage(capabilityResult.message());
+        response.setCapabilityModel(capabilityResult.model());
+        response.setCapabilityLatencyMs(capabilityResult.latencyMs());
         return response;
     }
 

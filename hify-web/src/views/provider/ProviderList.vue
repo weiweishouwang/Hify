@@ -187,8 +187,17 @@ async function handleTest(row: ProviderListItem): Promise<void> {
   try {
     const result = await testConnection(row.publicId)
     if (!disposed) {
-      if (result.connected) ElMessage.success(`连接成功，耗时 ${result.latencyMs} ms`)
-      else ElMessage.warning('连通性测试未通过')
+      if (!result.connected) {
+        ElMessage.warning('连通性测试未通过')
+      } else if (result.capabilitySupported === false) {
+        // 协议通了但能力不通 —— 这种最坑：Ollama 的 /v1 兼容层会显示「正常」，
+        // 但它把 tools 定义悄悄丢了，Agent 的工具循环是坏的。
+        ElMessage.warning(`连接成功，但工具调用不可用：${result.capabilityMessage ?? '上游未回出工具调用'}`)
+      } else if (result.capabilitySupported === true) {
+        ElMessage.success(`连接成功，耗时 ${result.latencyMs} ms；工具调用正常`)
+      } else {
+        ElMessage.success(`连接成功，耗时 ${result.latencyMs} ms；${result.capabilityMessage ?? '未做能力连通测试'}`)
+      }
       await refreshTable()
     }
   } catch {

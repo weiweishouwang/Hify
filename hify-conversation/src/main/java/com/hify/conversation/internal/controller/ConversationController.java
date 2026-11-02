@@ -2,6 +2,8 @@ package com.hify.conversation.internal.controller;
 
 import com.hify.conversation.api.ConversationCreateReq;
 import com.hify.conversation.api.ConversationListQuery;
+import com.hify.conversation.api.ConversationRunListResp;
+import com.hify.conversation.api.ConversationRunQuery;
 import com.hify.conversation.api.ConversationListResp;
 import com.hify.conversation.api.ConversationMessageResp;
 import com.hify.conversation.api.ConversationService;
@@ -54,6 +56,16 @@ public class ConversationController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Result<ConversationListResp> list(@Valid @ModelAttribute ConversationListQuery query) {
         return Result.ok(service.list(query));
+    }
+
+    /**
+     * 对话运行记录（控制台日志页）。
+     *
+     * <p>路径是字面量 {@code /runs}，比 {@code /{id}} 更具体 —— 不会被「按 id 取会话」抢走。
+     */
+    @GetMapping(value = "/runs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Result<ConversationRunListResp> runs(@Valid @ModelAttribute ConversationRunQuery query) {
+        return Result.ok(service.listRuns(query));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)

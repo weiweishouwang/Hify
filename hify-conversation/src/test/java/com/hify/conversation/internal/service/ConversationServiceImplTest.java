@@ -4,12 +4,15 @@ import com.hify.agent.api.AgentDetailResp;
 import com.hify.agent.api.AgentService;
 import com.hify.conversation.api.ConversationCreateReq;
 import com.hify.conversation.api.ConversationListQuery;
+import com.hify.conversation.api.ConversationRunQuery;
 import com.hify.conversation.api.ConversationUpdateReq;
 import com.hify.conversation.internal.converter.ConversationConverter;
 import com.hify.conversation.internal.entity.ConversationDO;
 import com.hify.conversation.internal.entity.MessageDO;
+import com.hify.conversation.internal.entity.RunDO;
 import com.hify.conversation.internal.mapper.ConversationMapper;
 import com.hify.conversation.internal.mapper.MessageMapper;
+import com.hify.conversation.internal.mapper.RunMapper;
 import com.hify.shared.api.CurrentUserService;
 import com.hify.shared.exception.BizException;
 import com.hify.shared.json.JsonUtils;
@@ -39,6 +42,7 @@ class ConversationServiceImplTest {
 
     @Mock ConversationMapper conversations;
     @Mock MessageMapper messages;
+    @Mock RunMapper runs;
     @Mock ConversationLookup lookup;
     @Mock CurrentUserService currentUsers;
     @Mock AgentService agents;
@@ -48,7 +52,7 @@ class ConversationServiceImplTest {
     @BeforeEach
     void setUp() {
         JsonUtils json = new JsonUtils(new ObjectMapper());
-        service = new ConversationServiceImpl(conversations, messages, lookup, currentUsers, agents,
+        service = new ConversationServiceImpl(conversations, messages, runs, lookup, currentUsers, agents,
                 new ConversationConverter(json));
         lenient().when(currentUsers.currentUserId()).thenReturn(42L);
         lenient().when(agents.getById(any())).thenReturn(agent());
@@ -191,5 +195,32 @@ class ConversationServiceImplTest {
         message.setTokenCount(0);
         message.setCreatedAt(LocalDateTime.of(2026, 11, 1, 10, 0).plusMinutes(id));
         return message;
+    }
+
+    @Test
+    @DisplayName("运行记录列表带上会话标题与 Agent 名字")
+    void 运行记录列表() {
+        var run = new RunDO();
+        run.setId(11L);
+        run.setSessionId(1L);
+        run.setStatus("succeeded");
+        run.setPromptTokens(120);
+        run.setCompletionTokens(340);
+        run.setToolCallCount(2);
+        run.setLatencyMs(1500);
+        run.setCreatedAt(LocalDateTime.of(2026, 11, 2, 3, 0));
+        when(runs.selectList(any())).thenReturn(List.of(run));
+        when(conversations.selectBatchIds(any())).thenReturn(List.of(entity()));
+
+        var result = service.listRuns(new ConversationRunQuery());
+
+        assertThat(result.getItems()).hasSize(1);
+        var item = result.getItems().getFirst();
+        assertThat(item.getId()).isEqualTo(11L);
+        assertThat(item.getSessionTitle()).isEqualTo("订单问题");
+        assertThat(item.getAgentName()).isEqualTo("客服助手");
+        assertThat(item.getStatus()).isEqualTo("succeeded");
+        assertThat(item.getPromptTokens()).isEqualTo(120);
+        assertThat(result.getHasNext()).isFalse();
     }
 }
