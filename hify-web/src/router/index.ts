@@ -18,9 +18,8 @@ declare module 'vue-router' {
  * App.vue 本身就是布局（左菜单 + 右内容区），所以这里全是顶层路由，
  * 不套一层带 children 的布局路由 —— 套了会出现「App.vue 渲染 App.vue」的递归。
  *
- * 侧边栏菜单在 App.vue 里，目前六项：模型管理 / 工具管理 / 知识库 / MCP 服务 / Agent 管理 / 对话。
- * 下面「知识库 / 工作流 / 日志」三条是占位路由，功能还没做，所以没进菜单，
- * 做完之后把 App.vue 的 menus 补上即可。
+ * 侧边栏菜单在 App.vue 里，目前七项：模型管理 / 工具管理 / 知识库 / MCP 服务 /
+ * Agent 管理 / 工作流 / 对话。下面「日志」一条还是占位路由，功能没做，所以没进菜单。
  */
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/chat' },

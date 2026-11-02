@@ -9,6 +9,7 @@ import {
   Expand,
   Fold,
   Setting,
+  Share,
   SwitchButton,
   Tools,
   User,
@@ -51,6 +52,7 @@ const menus = [
   { path: '/knowledge', title: '知识库', icon: Collection },
   { path: '/mcp-servers', title: 'MCP 服务', icon: Connection },
   { path: '/agents', title: 'Agent 管理', icon: User },
+  { path: '/workflows', title: '工作流', icon: Share },
   { path: '/chat', title: '对话', icon: ChatDotRound },
 ]
 
