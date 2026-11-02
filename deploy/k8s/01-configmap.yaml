@@ -1,0 +1,44 @@
+# 非敏感配置。
+#
+# 键名就是环境变量名，与开发环境（docker-compose.yml 的 .env）**同名** ——
+# 两边只差值，不差键名（CLAUDE.md §2.3）。所以从 Compose 切到 K8s 时，
+# 配置不需要重新对一遍名字。
+#
+# 敏感项（密码、凭据加密密钥）在 02-secret.example.yaml。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hify-config
+  namespace: hify
+data:
+  # ── 业务库：MySQL ─────────────────────────────────────────────
+  HIFY_DB_HOST: "mysql"
+  HIFY_DB_PORT: "3306"
+  HIFY_DB_NAME: "hify"
+  HIFY_DB_USERNAME: "hify"
+
+  # ── 向量库：PostgreSQL + pgvector ──────────────────────────────
+  HIFY_PG_HOST: "postgres"
+  HIFY_PG_PORT: "5432"
+  HIFY_PG_NAME: "hify"
+  HIFY_PG_USERNAME: "hify"
+
+  # ── 缓存与协调：Redis ─────────────────────────────────────────
+  HIFY_REDIS_HOST: "redis"
+  HIFY_REDIS_PORT: "6379"
+  HIFY_REDIS_DATABASE: "0"
+
+  # ── 跨域 ──────────────────────────────────────────────────────
+  # 生产用「方案 A」：Ingress 把 /api 直接路由到 hify-api，前端与 api 不同源，
+  # 所以必须在这里填前端地址。留空 = 不启用跨域 = 前端全部请求被浏览器拦下。
+  HIFY_CORS_ALLOWED_ORIGINS: "https://hify.example.com"
+
+  # ── 静态资源 ──────────────────────────────────────────────────
+  # 镜像里没有前端产物（前端不进 Maven reactor，见 CLAUDE.md §4），
+  # 单容器部署时把前端产物挂进来并填这个路径。
+  HIFY_STATIC_ENABLED: "true"
+  HIFY_STATIC_LOCATION: ""
+
+  # ── 运行时开关 ────────────────────────────────────────────────
+  HIFY_PROVIDER_HEALTH_ENABLED: "true"
+  HIFY_LOG_DIR: "/var/log/hify"

@@ -39,6 +39,8 @@ USER hify
 EXPOSE 8080
 
 # 与 CLAUDE.md §1.4 的内存预算一致：堆 512m，容器内存上限需 ≥ 堆 + native
-ENV JAVA_TOOL_OPTIONS="-Xmx512m -XX:MaxMetaspaceSize=128m -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC"
+# JVM 参数必须与 deploy/k8s/10-api-deployment.yaml 里的一致 —— 两处不一样就会出现
+# 「容器里跑的和清单里写的不是同一个配置」
+ENV JAVA_TOOL_OPTIONS="-Xmx512m -XX:MaxMetaspaceSize=128m -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

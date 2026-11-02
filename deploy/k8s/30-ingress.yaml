@@ -1,0 +1,49 @@
+# Ingress：TLS 终止 + 路由 + SSE 专用的缓冲与超时策略。
+#
+# 路由用「方案 A」：/api 直达 hify-api，/ 到 hify-web。
+# SSE 因此少走一跳 nginx —— 少一层配置、少一个出错点。
+# 代价是前后端不同源，api 侧要配 CORS（见 01-configmap.yaml 的 HIFY_CORS_ALLOWED_ORIGINS）。
+#
+# 两条路由都要有下面的注解：**只配外层不配内层**，流式会变成
+# 「等很久，然后一次性全部到达」—— 这个现象很容易被误判成「模型慢」。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hify
+  namespace: hify
+  annotations:
+    # 不缓冲：nginx 攒完整个响应才发给客户端，流式就变成非流式
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # POST 体也不缓冲（对话的请求体是 JSON，工具参数可能不小）
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    # 默认 60s 会掐断长生成
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # 知识库上传
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - hify.example.com
+      secretName: hify-tls
+  rules:
+    - host: hify.example.com
+      http:
+        paths:
+          # 方案 A：/api 直达 api，少一跳 nginx
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: hify-api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hify-web
+                port:
+                  number: 80

@@ -1,0 +1,15 @@
+# hify-web 的内部服务。Ingress 的 / 路径指向它。
+apiVersion: v1
+kind: Service
+metadata:
+  name: hify-web
+  namespace: hify
+  labels: { app: hify-web }
+spec:
+  type: ClusterIP
+  selector: { app: hify-web }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

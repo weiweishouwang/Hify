@@ -1,0 +1,92 @@
+# hify-api：无状态应用，3 副本。
+#
+# 每一项都有出处（部署规格 §6.1 / §13.1、CLAUDE.md §1.4）：
+#   · 固定 3 副本，不做 HPA —— SSE 是 IO 密集，CPU 指标反映不出并发压力
+#   · terminationGracePeriodSeconds: 180 ≥ 最长生成时长 + 缓冲
+#   · preStop sleep 10 —— 等 Endpoint 摘除传播完，否则滚动更新会有一批 502
+#   · liveness 只查 livenessState，readiness 才查 db —— 依赖抖动不重启
+#   · limits.memory 1536Mi —— 堆 512m + native ~566m，1Gi 装不下
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hify-api
+  namespace: hify
+  labels: { app: hify-api }
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 先起新的再停旧的，滚动期间容量不降
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: { app: hify-api }
+  template:
+    metadata:
+      labels: { app: hify-api }
+    spec:
+      # 给 Ingress 摘除 Endpoint 的传播时间，再开始关停。
+      # 必须 ≥ spring.lifecycle.timeout-per-shutdown-phase（180s），否则容器先强杀。
+      terminationGracePeriodSeconds: 180
+      containers:
+        - name: api
+          image: registry.internal/hify/api:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: hify-config
+            - secretRef:
+                name: hify-secret
+          env:
+            # prod profile：日志走 JSON（stdout + 文件），不是彩色控制台
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            # 必须与 Dockerfile 里的 JAVA_TOOL_OPTIONS 一致
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -Xmx512m -XX:MaxMetaspaceSize=128m -XX:MaxDirectMemorySize=128m
+                -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=100
+          lifecycle:
+            preStop:
+              exec:
+                # Endpoint 摘除是异步的，不等一会儿，Ingress 会往已经停止接受
+                # 新连接的 Pod 转发请求，造成一批 502
+                command: ["sh", "-c", "sleep 10"]
+          startupProbe:
+            # 启动时依赖可能还没就绪，给足 30 × 5s 的时间慢慢来
+            httpGet: { path: /actuator/health/readiness, port: http }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            # 只看进程自己活着。绑了 db 的话，数据库一抖就会把整个 Deployment
+            # 重启，所有进行中的对话被一次性掐断
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            # MySQL 挂了就读不到 Agent 配置，等于在服务一个必然失败的请求 —— 摘流量
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests:
+              memory: 1024Mi
+              cpu: 500m
+            limits:
+              # 堆 512m + Metaspace 128m + DirectBuffer 128m + 线程栈 ~250m
+              memory: 1536Mi
+              cpu: 2000m
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/hify
+      volumes:
+        # prod profile 的日志写文件。集群日志采集走 stdout（JSON），
+        # 这个目录是给需要留档的场景用的 —— Pod 重建即丢，要长期留存就换成 PVC
+        # 或挂到宿主机目录。
+        - name: logs
+          emptyDir:
+            sizeLimit: 2Gi

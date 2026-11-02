@@ -24,7 +24,16 @@ RUN npm run build
 FROM nginx:1.27-alpine
 
 # nginx 配置：静态资源 + 反代 /api
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+#
+# 配置是模板：官方 nginx 镜像启动时会用 envsubst 把 /etc/nginx/templates/*.template
+# 里的 ${变量} 换成容器环境变量里的值，生成 /etc/nginx/conf.d/default.conf。
+# 反代上游因此可以按环境切换 —— Compose 里是 api:8080，K8s 里是 hify-api:8080。
+#
+# 模板里除了 API_UPSTREAM 之外的 $ 变量（$uri、$host 等）不在环境变量里，
+# envsubst 不会动它们。
+ENV API_UPSTREAM=api:8080
+COPY templates/ /etc/nginx/templates/
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

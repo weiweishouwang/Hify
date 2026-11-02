@@ -1,0 +1,64 @@
+# 出网白名单：api 只能访问存储、集群内的 MCP 服务，以及外部的 LLM 供应商。
+#
+# 这份清单是**起步版本**：egress 规则按「必须通」逐条列，DNS 与集群内互通放行，
+# 其余出网默认拒绝。LLM 供应商的域名要按实际用的厂商补进第三段规则 ——
+# 用公司统一出口代理的话，把代理地址加进去、其余都封掉。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hify-api
+  namespace: hify
+spec:
+  podSelector:
+    matchLabels: { app: hify-api }
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 只接受集群内的 web 与 Ingress 控制器
+    - from:
+        - podSelector:
+            matchLabels: { app: hify-web }
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: ingress-nginx }
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 集群内的存储与 MCP 服务
+    - to:
+        - podSelector:
+            matchLabels: { app: mysql }
+        - podSelector:
+            matchLabels: { app: postgres }
+        - podSelector:
+            matchLabels: { app: redis }
+        - podSelector:
+            matchLabels: { app: hify-mcp }
+      ports:
+        - protocol: TCP
+          port: 3306
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 8080
+    # 外部 LLM 供应商（走 443）。按实际用的厂商补 DNS 规则。
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

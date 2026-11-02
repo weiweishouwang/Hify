@@ -1,0 +1,14 @@
+# 节点维护或滚动更新期间，至少留一个副本可用。
+#
+# 与 Deployment 的 maxUnavailable: 0 是两条不同的保证：
+#   · maxUnavailable 管滚动更新（这次发版）
+#   · PDB 管节点排空（运维把节点停了）
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hify-api
+  namespace: hify
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: hify-api }

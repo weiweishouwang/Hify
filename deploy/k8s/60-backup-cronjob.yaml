@@ -1,0 +1,119 @@
+# 定时备份：MySQL 与 PostgreSQL 各一个 CronJob。
+#
+# **两套库都要备份，且恢复演练要做两遍**（部署规格 §12.5）：
+# 只恢复 MySQL 会让知识库元数据与向量不一致 —— 检索要么返回空，
+# 要么返回不存在的分段。
+#
+# 两个 CronJob 分开是有原因的：dump 客户端不通用 ——
+# mysql 镜像里有 mysqldump 没有 pg_dump，postgres 镜像里反过来。
+# 硬凑一个镜像就得自己装客户端，多一层供应链与维护负担。
+#
+# dump 落到一个 PVC 上。要传到对象存储（公司现有的 MinIO / S3 兼容服务）
+# 在最后一步加上对应的上传命令 —— 存储后端是环境相关的，通用清单里不写死。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hify-backup-mysql
+  namespace: hify
+spec:
+  schedule: "17 3 * * *"   # 每天 03:17。错开整点，避免和别的定时任务撞在一起
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: mysql:8.4
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  OUT=/backup/$TS
+                  mkdir -p "$OUT"
+                  echo ">> dump mysql"
+                  mysqldump \
+                    -h "$HIFY_DB_HOST" -P "$HIFY_DB_PORT" \
+                    -u "$HIFY_DB_USERNAME" -p"$HIFY_DB_PASSWORD" \
+                    --single-transaction --routines --triggers \
+                    "$HIFY_DB_NAME" > "$OUT/mysql.sql"
+                  # 对象存储后端按环境补，例如：
+                  # aws s3 cp "$OUT/mysql.sql" "s3://hify-backups/$TS/mysql.sql" --endpoint-url "$S3_ENDPOINT"
+                  echo ">> 备份完成: $OUT"
+                  ls -lh "$OUT"
+              envFrom:
+                - configMapRef:
+                    name: hify-config
+                - secretRef:
+                    name: hify-secret
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: hify-backup
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hify-backup-postgres
+  namespace: hify
+spec:
+  schedule: "23 3 * * *"   # 比 MySQL 晚 6 分钟，两个库不同时打磁盘
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:16
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  OUT=/backup/$TS
+                  mkdir -p "$OUT"
+                  echo ">> dump postgres"
+                  PGPASSWORD="$HIFY_PG_PASSWORD" pg_dump \
+                    -h "$HIFY_PG_HOST" -p "$HIFY_PG_PORT" \
+                    -U "$HIFY_PG_USERNAME" -d "$HIFY_PG_NAME" \
+                    --format=custom > "$OUT/postgres.dump"
+                  echo ">> 备份完成: $OUT"
+                  ls -lh "$OUT"
+              envFrom:
+                - configMapRef:
+                    name: hify-config
+                - secretRef:
+                    name: hify-secret
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: hify-backup
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hify-backup
+  namespace: hify
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi

@@ -1,0 +1,211 @@
+# 自建存储 —— **仅在公司没有云托管实例时用**。
+#
+# 部署规格 §2 的建议是「优先用云托管（RDS / 云数据库 / 云 Redis）」：
+# 备份、主从切换、版本升级、监控告警是一整套运维工作，
+# 50 人内部工具不值得自己扛。用云托管时删掉这个文件，
+# 把 01-configmap.yaml 里的 HIFY_DB_HOST 之类改成云实例的地址即可。
+#
+# 自建的话三样东西必须配齐，缺一不可：
+#   ① PVC（ReadWriteOnce，Retain 策略 —— 删 StatefulSet 不删卷）
+#   ② 定时备份（见 60-backup-cronjob.yaml）
+#   ③ 明确的恢复预案（谁、什么情况下、执行什么命令）
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: hify
+  labels: { app: mysql }
+spec:
+  clusterIP: None
+  selector: { app: mysql }
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: hify
+  labels: { app: mysql }
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels: { app: mysql }
+  template:
+    metadata:
+      labels: { app: mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hify-secret, key: HIFY_DB_ROOT_PASSWORD }
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef: { name: hify-config, key: HIFY_DB_NAME }
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef: { name: hify-config, key: HIFY_DB_USERNAME }
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hify-secret, key: HIFY_DB_PASSWORD }
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_0900_ai_ci
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1"]
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests: { memory: 512Mi, cpu: 250m }
+            limits: { memory: 2Gi, cpu: 1000m }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: hify
+  labels: { app: postgres }
+spec:
+  clusterIP: None
+  selector: { app: postgres }
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: hify
+  labels: { app: postgres }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          # pgvector 官方镜像：PostgreSQL 16 + pgvector 扩展
+          image: pgvector/pgvector:pg16
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: { name: hify-config, key: HIFY_PG_NAME }
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: { name: hify-config, key: HIFY_PG_USERNAME }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hify-secret, key: HIFY_PG_PASSWORD }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "hify", "-d", "hify"]
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests: { memory: 512Mi, cpu: 250m }
+            limits: { memory: 2Gi, cpu: 1000m }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: hify
+  labels: { app: redis }
+spec:
+  clusterIP: None
+  selector: { app: redis }
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: hify
+  labels: { app: redis }
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          ports:
+            - name: redis
+              containerPort: 6379
+          args:
+            # noeviction：锁键与幂等键不能被淘汰
+            #（allkeys-lru 会淘汰掉它们，锁失效、幂等失效）
+            - redis-server
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - noeviction
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests: { memory: 128Mi, cpu: 100m }
+            limits: { memory: 512Mi, cpu: 500m }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

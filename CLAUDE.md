@@ -175,7 +175,17 @@ Ingress (nginx-ingress) ── TLS 终止 · 路由 · SSE 超时与缓冲策略
 
 **不要「外层配了内层没配」**：内层缓冲会让流式变成「等很久后一次性到达」，而且很难被误判成模型慢。
 
+**生产清单在 `deploy/k8s/`**：`00-namespace` / `01-configmap` / `02-secret.example` /
+`10-api-deployment` / `11-api-service` / `12-api-pdb` / `20-web-deployment` / `21-web-service` /
+`30-ingress` / `40-networkpolicy` / `50-statefulset-storage` / `60-backup-cronjob`。
+按文件名顺序 `kubectl apply -f deploy/k8s/` 一次应用完。清单里的每个值都有出处
+（`docs/superpowers/specs/2026-10-29-hify-deployment.md`），**改之前先读那份文档**。
+
 **开发环境（Docker Compose）跑同一组服务**：mysql、postgres(pgvector)、redis、api、web。生产多出来的只是 K8s 的 Service/DNS 与 Ingress，配置靠同一套环境变量名保持一致。
+
+**nginx 配置是模板**：`hify-web/templates/default.conf.template`，容器启动时由官方镜像的
+`envsubst` 渲染。反代上游由 `API_UPSTREAM` 决定 —— Compose 里 `api:8080`、K8s 里 `hify-api:80`。
+**同一份配置要能在两种拓扑下都跑起来，地址就不能写死。**
 
 MCP server 独立部署的原因：stdio 传输下 MCP server 是 Hify 在本机 spawn 的子进程，K8s 多副本会导致每个 Pod 各起一份、状态互不一致。
 
@@ -483,7 +493,7 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **上游是阻塞的**（`LlmHttpClient` 跑在 `llmExecutor` 上，见 §3.5）→ **往浏览器写帧的线程必须和 `llmExecutor` 分开**：一个慢客户端的阻塞写如果占住 `llmExecutor` 线程，就等于吃掉一个 LLM 并发名额
 - **SSE 写出用独立的线程池**（`hify-conversation` 的 `sseWriterExecutor`）—— 核心 48 / 最大 200 / `SynchronousQueue`（队列长度 0，超核心线程数就立刻新建线程，与 `boundedElastic` 同一个弹性语义）/ 拒绝策略 `AbortPolicy`（超 200 条并发流时**快速失败**，不能用 `CallerRuns` —— 那会让写出回落到编排线程上，等于绕回要避免的耦合）
 - **编排线程与写出线程之间用有界队列交接，满了就背压（阻塞等待）** —— 丢弃事件会丢掉模型输出，无界缓冲会把内存打满；背压是唯一两头都不吃亏的选项
-- **必须显式设长超时**：Tomcat `asyncTimeout` 默认 30s，会掐断 60s 的生成。`spring.mvc.async.request-timeout: 30m` 或 `new SseEmitter(180_000L)`
+- **必须显式设长超时**：Tomcat `asyncTimeout` 默认 30s，会掐断 60s 的生成。`spring.mvc.async.request-timeout: 30m`（已配在 `hify-app/src/main/resources/application.yml`）或 `new SseEmitter(180_000L)`。**优雅停机的窗口也要跟着放大** —— `spring.lifecycle.timeout-per-shutdown-phase` 要 ≥ K8s 的 `terminationGracePeriodSeconds`（180s），否则 Spring 先退完、容器再强杀，滚动更新时进行中的对话被拦腰截断
 - **SSE 的错误必须在响应开始之前返回** —— HTTP 状态码在响应头发出的那一刻就定了。controller 直接返回 `SseEmitter` 的话，后面的编排（校验资源、调模型）都发生在流开始之后，那时候再抛异常只能变成流里的一帧 `error`，状态码改不了。**所以资源存在性与归属要在返回 emitter 之前校验完**（校验失败时 emitter 从没被返回给框架，异常正常走全局处理器 → 客户端拿到标准的 404 JSON）
 - **必须发心跳**（15–30s）：保活、检测死客户端、防止中间代理掐断空闲连接
 - `ServerSentEvent.data()` **传对象让 Jackson 序列化**，不要传裸 String（含换行会破坏 SSE 分帧）
@@ -559,6 +569,8 @@ ADD INDEX `idx_tool_ids` ((CAST(`tool_ids`->'$[*]' AS CHAR(64) ARRAY)))
 - **工作流的 Agent 节点不带工具循环** —— `hify-workflow` 与 `hify-conversation` 是**平行的两个编排层，互不依赖**（§2.1）。工具循环是 conversation 的编排逻辑，在 workflow 里再写一份就是两套实现、两边「工具函数名映射」的规则还要各自维护。**决定**：Agent 节点 = 用 Agent 的模型与提示词做**一次**模型调用；工作流要调工具就用独立的 `tool` 节点。**代价**：Agent 绑的工具在 workflow 的 agent 节点里用不上
 - **编排跑在线程池里，用户 id 必须显式带进去** —— 上游调用与工具执行都是阻塞的，编排跑在 `llmExecutor` 上；那边的 `CurrentUserHolder` 是空的（§3.1 C5：线程池复用会串号）。**做法**：在 HTTP 线程上取用户 id，显式传进编排器 —— 串号比取不到更糟
 - **一期没有认证时，会话归属落到内置的「开发用户」** —— `conv_session.user_id` 是 NOT NULL 外键指向 `user.id`，而认证方案还没定（§五）、登录接口不存在。**做法**：`hify-shared` 提供 `CurrentUserService.currentUserId()` —— 有登录上下文（`CurrentUserHolder` 里有人）就用那个人，没有就落到一个内置的 `username='developer'` 的用户（不存在就幂等创建）。**为什么**：把 `user_id` 改成可空等于回避「会话是谁的」这个问题；在 conversation 模块直接查 `user` 表违反「跨模块只走 api 包」；自己实现登录等于替用户把认证方案定死。**代价**：一期所有会话看起来属于同一个人。**将来接上登录只要让登录拦截器往 `CurrentUserHolder` 里塞用户，这里一行都不用改**
+- **跨域在 api 侧配，且默认关闭** —— §2.3 的方案 A（Ingress 直连 api）下前后端不同源，api 侧必须处理 CORS；方案 B 与开发环境同源，不需要。**做法**：`hify.cors.allowed-origins` 默认为空 = 不注册任何跨域规则；配了就只允许那几个来源，令牌走 `Authorization` 头（不是 Cookie）所以不带凭据。**为什么不用通配符**：「通配 + 允许凭据」是浏览器直接拒绝的组合，写上去也不生效；而真开成通配等于把内部工具的接口开给任意站点。**代价**：方案 A 下必须记得配这个环境变量，否则前端全量报 CORS 错误（K8s 的 ConfigMap 里写了示例值，apply 的人会看到）
+- **静态资源与单页应用回落归 hify-app** —— 前端是 history 路由，刷新 `/agents` 会向服务器要这个路径，服务器上没有这个文件。**做法**：资源处理器 + 回落解析器，找不到静态文件就回落到 `index.html`；**回落排除 `/api` 与 `/actuator`**（这两个前缀下找不到资源就该是 404 JSON，而不是一份让前端 `JSON.parse` 炸掉的 HTML）。**为什么用资源处理器而不是兜底 Controller**：资源处理器的 order 在 `RequestMappingHandlerMapping` 之后，业务接口优先命中，不会被兜底吃掉。**代价**：Spring Boot 的默认静态资源映射要关掉（`spring.web.resources.add-mappings: false`）—— 它也注册在 `/**` 上，后注册的会顶掉先注册的，谁先谁后取决于装配顺序。**替代方案**：前端改 hash 路由 —— URL 带 `#`，分享链接难看（已否决）
 
 ### 技术选型
 - **Spring Boot + MyBatis-Plus + Vue3/Element Plus** —— 工程化成熟度让一个人能快速交付完整系统。代价：相比 FastAPI 多写约 2–4 天基础设施代码（统一异常体系、事务边界规范、Security 自拼），换来 CRUD 效率与管理后台开发速度。

@@ -1,0 +1,52 @@
+# hify-web：前端静态资源 + nginx，2 副本。
+#
+# nginx 是官方镜像，配置从模板渲染（见 hify-web/templates/default.conf.template）：
+# 反代上游由 API_UPSTREAM 决定 —— Compose 里是 api:8080，这里是 hify-api:8080。
+#
+# 生产走「方案 A」：Ingress 把 /api 直接路由到 hify-api，请求不经过这一层。
+# web 里的 /api 反代保留是为了直连 Service 排障时仍然能用。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hify-web
+  namespace: hify
+  labels: { app: hify-web }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: { app: hify-web }
+  template:
+    metadata:
+      labels: { app: hify-web }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: registry.internal/hify/web:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: API_UPSTREAM
+              value: hify-api:80
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 500m

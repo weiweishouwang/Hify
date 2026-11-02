@@ -35,6 +35,16 @@
 
     <!-- 生产环境：JSON 写文件，按天滚动，保留 30 天 -->
     <springProfile name="prod">
+        <!--
+          stdout 也用 JSON：K8s 的日志采集走 stdout（部署规格 §9.1），
+          只写文件的话 kubectl logs 是空的，排障时什么都看不到。
+          两个输出都是 JSON，不是彩色控制台。
+        -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+                <format>logstash</format>
+            </encoder>
+        </appender>
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${HIFY_LOG_DIR}/hify.log</file>
             <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -54,6 +64,7 @@
             </encoder>
         </appender>
         <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
         </root>
     </springProfile>

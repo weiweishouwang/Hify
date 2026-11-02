@@ -17,9 +17,18 @@ server {
         add_header Cache-Control "no-cache";
     }
 
-    # ── 反代到 api（同源，前端不需要处理 CORS）──────────────────
+    # ── 反代到 api ──────────────────────────────────────────────
+    # 上游地址来自环境变量 API_UPSTREAM：
+    #   Docker Compose 里是 api:8080（服务名）
+    #   Kubernetes 里是 hify-api:8080（Service 名）
+    # 同一份配置要能在两种拓扑下都跑起来，地址就不能写死。
+    #
+    # 生产用的是「方案 A」—— Ingress 把 /api 直接路由到 hify-api，
+    # 请求根本走不到这一段（部署规格 §13.8）。保留它是为了：
+    #   · 开发环境没有 Ingress，nginx 是唯一入口
+    #   · 直连 web Service 时（比如排障）仍然能用
     location /api/ {
-        proxy_pass http://api:8080/api/;
+        proxy_pass http://${API_UPSTREAM}/api/;
 
         proxy_http_version 1.1;
         proxy_set_header Connection "";

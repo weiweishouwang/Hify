@@ -1,0 +1,10 @@
+# Hify 的命名空间
+#
+# 整套系统放在一个命名空间里：api 与 web 之间的 Service 解析、NetworkPolicy
+# 的选择器、Secret 的引用都靠它限定范围。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hify
+  labels:
+    app.kubernetes.io/name: hify

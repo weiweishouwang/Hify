@@ -125,7 +125,7 @@ package: build
 	@test -n "$(APP_JAR)" || { echo "找不到后端 jar，先 make build"; exit 1; }
 	@cp "$(APP_JAR)" $(DIST_DIR)/$(PKG_NAME)/app.jar
 	@cp -R $(WEB_DIR)/dist $(DIST_DIR)/$(PKG_NAME)/web
-	@cp $(WEB_DIR)/nginx.conf $(DIST_DIR)/$(PKG_NAME)/nginx.conf
+	@cp -R $(WEB_DIR)/templates $(DIST_DIR)/$(PKG_NAME)/templates
 	@cp docker-compose.yml Dockerfile .env.example $(DIST_DIR)/$(PKG_NAME)/
 	@cp -R docker $(DIST_DIR)/$(PKG_NAME)/docker
 	@cp start.sh stop.sh $(DIST_DIR)/$(PKG_NAME)/
@@ -135,7 +135,7 @@ package: build
 	  "目录说明：" \
 	  "  app.jar        后端可执行 jar（java -jar app.jar）" \
 	  "  web/           前端静态产物（用 nginx 托管，反代 /api 到后端）" \
-	  "  nginx.conf     nginx 配置（含 SSE 必需的四项设置）" \
+	  "  templates/     nginx 配置模板（含 SSE 必需的四项设置；上游由 API_UPSTREAM 决定）" \
 	  "  docker-compose.yml / Dockerfile / docker/  容器化部署" \
 	  "  .env.example   端口与凭据模板" \
 	  > $(DIST_DIR)/$(PKG_NAME)/README.txt

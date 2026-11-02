@@ -37,6 +37,12 @@
       "port": 8083
     },
     {
+      "name": "hify-spa",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "export HIFY_DB_HOST=127.0.0.1 HIFY_DB_PORT=3308 HIFY_REDIS_HOST=127.0.0.1 HIFY_REDIS_PORT=6380 HIFY_PG_HOST=127.0.0.1 HIFY_PG_PORT=5433; export HIFY_STATIC_LOCATION=/Users/zhw/Documents/GitHub/Hify/hify-web/dist; exec java -jar hify-app/target/hify-app-0.1.0-SNAPSHOT.jar --server.port=18100 --hify.ai.provider-health.enabled=false"],
+      "port": 18100
+    },
+    {
       "name": "hify-agent-web",
       "runtimeExecutable": "env",
       "runtimeArgs": ["VITE_API_PROXY_TARGET=http://localhost:8082", "npm", "--prefix", "hify-web", "run", "dev", "--", "--port", "5176", "--strictPort"],

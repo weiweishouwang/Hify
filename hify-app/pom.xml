@@ -80,6 +80,17 @@
               <goal>repackage</goal>
             </goals>
           </execution>
+          <!--
+            生成 META-INF/build-info.properties（版本、构建时间）。
+            /actuator/info 直接能读到跑的是哪个版本 —— 版本号从 jar 自身生成，
+            不存在「代码里写的版本号」与「包里的版本号」两处漂移。
+          -->
+          <execution>
+            <id>build-info</id>
+            <goals>
+              <goal>build-info</goal>
+            </goals>
+          </execution>
         </executions>
         <configuration>
           <mainClass>com.hify.app.HifyApplication</mainClass>

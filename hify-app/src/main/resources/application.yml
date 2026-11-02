@@ -12,10 +12,37 @@ server:
   port: 8080
   # 优雅停机：SSE 长连接需要时间推完，避免滚动更新掐断对话
   shutdown: graceful
+  # 信任前置代理（Ingress / nginx）转发的协议与客户端 IP。
+  # 不设的话后端会把所有请求当成 http、客户端 IP 全是代理的地址。
+  forward-headers-strategy: framework
+  tomcat:
+    threads:
+      # 保持默认 200 不调低（CLAUDE.md §1.4、部署规格 §13.1）：
+      # 正常路径 SSE 不占 Tomcat 线程，这 200 是最后一道缓冲——
+      # 一旦某处漏了 offload，让故障以「变慢」而不是「全面拒绝服务」的形式暴露。
+      max: 200
 
 spring:
   application:
     name: hify
+
+  mvc:
+    # 异步请求的超时。默认 30s 会掐断任何跑得更久的异步请求：
+    # 工作流的运行接口用 DeferredResult（不是 SseEmitter，没有自己的超时保护），
+    # 对话流虽然 emitter 带了 600s，这里仍要留够（CLAUDE.md §3.4）。
+    async:
+      request-timeout: 30m
+
+  # 入站请求体的上限。默认 256KB，知识库上传 TXT 时容易超。
+  codec:
+    max-in-memory-size: 2MB
+
+  web:
+    resources:
+      # 关掉 Spring Boot 的默认静态资源映射：它也注册在 /** 上，
+      # 后注册的会顶掉先注册的，回落行为就成了装配顺序的运气。
+      # 关掉后那几个标准位置由 hify-app 的 StaticResourceConfig 补回来。
+      add-mappings: false
 
   # ── 业务库：MySQL ─────────────────────────────────────────────
   datasource:
@@ -48,7 +75,9 @@ spring:
           min-idle: 2
 
   lifecycle:
-    timeout-per-shutdown-phase: 60s
+    # 优雅停机的等待窗口。要 ≥ K8s 的 terminationGracePeriodSeconds（180s），
+    # 否则 Spring 先退完、容器再强杀 —— 表现为「滚动更新时对话被拦腰截断」。
+    timeout-per-shutdown-phase: 180s
 
   jackson:
     # 时间格式由 shared 的 JacksonConfig 统一成 ISO 8601
@@ -67,6 +96,28 @@ hify:
     provider-health:
       # 每分钟只读目录探测，不发起模型推理；可显式关闭。
       enabled: ${HIFY_PROVIDER_HEALTH_ENABLED:true}
+
+  # ── 跨域 ──────────────────────────────────────────────────────
+  # 什么时候才需要：部署方案 A（Ingress 把 /api 直接路由到 hify-api）下
+  # 前后端不同源，浏览器会拦下跨域请求，这时 api 侧必须配。
+  # 方案 B（nginx 反代，前后端同源）与开发环境都不需要 —— 所以默认为空 = 关闭。
+  cors:
+    allowed-origins: ${HIFY_CORS_ALLOWED_ORIGINS:}
+
+  # ── 静态资源与单页应用回落 ─────────────────────────────────────
+  app:
+    static:
+      enabled: ${HIFY_STATIC_ENABLED:true}
+      # 单页应用的入口页：找不到静态文件时回落到它
+      index-page: index.html
+      locations:
+        - classpath:/static/
+        - classpath:/public/
+        - classpath:/resources/
+        - classpath:/META-INF/resources/
+        # 外部目录：把前端产物挂进来，单容器部署时不用再维护一个 nginx。
+        # 留空则忽略（装配时跳过空位置）。
+        - ${HIFY_STATIC_LOCATION:}
 
   vector:
     datasource:
@@ -116,7 +167,13 @@ management:
     web:
       exposure:
         include: health,info,prometheus,metrics
+        # 不要加 env / heapdump / threaddump / configprops：
+        # env 会把环境变量里的密钥暴露出去。
   endpoint:
+    info:
+      # 版本信息由 spring-boot-maven-plugin 的 build-info goal 生成，
+      # 落在 jar 里的 META-INF/build-info.properties，/actuator/info 直接能读到。
+      enabled: true
     health:
       probes:
         enabled: true
@@ -128,6 +185,9 @@ management:
         liveness:
           include: livenessState
       show-details: never
+  info:
+    env:
+      enabled: true
   metrics:
     tags:
       application: hify

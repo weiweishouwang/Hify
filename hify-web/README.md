@@ -3,7 +3,14 @@
 Hify 前端。Vue 3 + TypeScript + Vite + Element Plus + Pinia。
 
 独立于 Maven 工程，产物是静态文件，由 nginx 托管。开发期 `/api` 走 vite 代理，
-生产期 `/api` 走 nginx 反代，**浏览器侧始终同源**，所以代码里不出现绝对地址。
+生产期有两种拓扑（见 `deploy/k8s/`）：
+
+| 拓扑 | `/api` 走哪 | 前端与 api 是否同源 |
+|---|---|---|
+| 开发（Docker Compose）/ 直连 Service | web 容器里的 nginx 反代 | 同源，不需要 CORS |
+| 生产（K8s，方案 A） | Ingress 直接路由到 hify-api | 不同源，**api 侧要配 CORS** |
+
+两种拓扑下**浏览器侧都是同源或已配好 CORS**，所以代码里不出现绝对地址。
 
 ## 命令
 
@@ -35,6 +42,13 @@ src/
 ├── utils/         request.ts（axios 实例 + 拦截器）、token.ts、id.ts
 └── styles/        全局样式
 ```
+
+`templates/default.conf.template` 是 **nginx 配置模板**而不是普通配置：官方 nginx 镜像
+启动时会把 `/etc/nginx/templates/*.template` 里的 `${变量}` 换成环境变量。
+反代上游因此可以按环境切换 —— Compose 里 `API_UPSTREAM=api:8080`，
+K8s 里 `API_UPSTREAM=hify-api:80` —— 同一份配置在两种拓扑下都能跑。
+模板里除了 `API_UPSTREAM` 之外的 `$` 变量（`$uri`、`$host` 等）不在环境变量里，
+`envsubst` 不会动它们。
 
 `App.vue` 就是布局：左侧 `el-menu` 菜单栏 + 右侧内容区 `router-view`。路由表因此全是顶层路由，
 不套带 `children` 的布局路由 —— 套了会出现「App.vue 渲染 App.vue」的递归。
