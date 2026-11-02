@@ -6,6 +6,7 @@ import com.hify.conversation.internal.service.ChatOrchestrator;
 import com.hify.conversation.internal.service.ConversationLookup;
 import com.hify.conversation.internal.service.ConversationSupport;
 import com.hify.conversation.internal.service.StreamEventSink;
+import com.hify.shared.api.CurrentUserService;
 import com.hify.shared.config.ThreadPoolConfig;
 import com.hify.shared.context.TraceContext;
 import com.hify.shared.exception.BizException;
@@ -53,14 +54,17 @@ public class ConversationStreamDispatcher {
 
     private final ChatOrchestrator orchestrator;
     private final ConversationLookup conversations;
+    private final CurrentUserService currentUsers;
     private final ThreadPoolExecutor llmExecutor;
     private final ThreadPoolExecutor sseWriter;
 
     public ConversationStreamDispatcher(ChatOrchestrator orchestrator, ConversationLookup conversations,
+                                        CurrentUserService currentUsers,
                                         @Qualifier(ThreadPoolConfig.LLM_EXECUTOR) ThreadPoolExecutor llmExecutor,
                                         @Qualifier("sseWriterExecutor") ThreadPoolExecutor sseWriter) {
         this.orchestrator = orchestrator;
         this.conversations = conversations;
+        this.currentUsers = currentUsers;
         this.llmExecutor = llmExecutor;
         this.sseWriter = sseWriter;
     }
@@ -93,9 +97,11 @@ public class ConversationStreamDispatcher {
             return;
         }
 
+        // 用户 id 在 HTTP 线程上取 —— 编排跑在线程池里，ThreadLocal 那边是空的
+        Long userId = currentUsers.currentUserId();
         StreamEventSink sink = new QueueSink(queue, disconnected);
         try {
-            llmExecutor.execute(() -> orchestrate(session, content, sink, queue, finished));
+            llmExecutor.execute(() -> orchestrate(session, content, userId, sink, queue, finished));
         } catch (RejectedExecutionException exception) {
             log.warn("模型调用线程池繁忙，本轮对话被拒绝");
             sink.emit("error", payload("code", 42900, "message", "模型调用繁忙，请稍后重试"));
@@ -104,12 +110,12 @@ public class ConversationStreamDispatcher {
     }
 
     /** 编排线程：跑对话，结束时给写出线程一个结束信号。 */
-    private void orchestrate(ConversationDO session, String content, StreamEventSink sink,
+    private void orchestrate(ConversationDO session, String content, Long userId, StreamEventSink sink,
                               BlockingQueue<StreamEvent> queue, AtomicBoolean finished) {
         String traceId = TraceContext.get();
         try {
             MDC.put(TraceContext.MDC_KEY, traceId);
-            orchestrator.run(session, content, sink);
+            orchestrator.run(session, content, userId, sink);
         } catch (RuntimeException exception) {
             log.warn("流式对话异常 session={} reason={}", session.getPublicId(),
                     exception.getClass().getSimpleName());

@@ -14,7 +14,6 @@ import com.hify.conversation.internal.entity.ConversationDO;
 import com.hify.conversation.internal.entity.RunDO;
 import com.hify.conversation.internal.mapper.CitationMapper;
 import com.hify.conversation.internal.mapper.RunMapper;
-import com.hify.shared.api.CurrentUserService;
 import com.hify.shared.context.TraceContext;
 import com.hify.shared.json.JsonUtils;
 import com.hify.tool.api.ToolCatalog;
@@ -56,13 +55,11 @@ public class ChatOrchestrator {
     private final ContextBuilder contextBuilder;
     private final RunMapper runs;
     private final CitationMapper citations;
-    private final CurrentUserService currentUsers;
     private final JsonUtils json;
 
     public ChatOrchestrator(AgentCatalog agents, ChatService chat,
                             ToolCatalog tools, MessageStore store, ContextBuilder contextBuilder,
-                            RunMapper runs, CitationMapper citations, CurrentUserService currentUsers,
-                            JsonUtils json) {
+                            RunMapper runs, CitationMapper citations, JsonUtils json) {
         this.agents = agents;
         this.chat = chat;
         this.tools = tools;
@@ -70,7 +67,6 @@ public class ChatOrchestrator {
         this.contextBuilder = contextBuilder;
         this.runs = runs;
         this.citations = citations;
-        this.currentUsers = currentUsers;
         this.json = json;
     }
 
@@ -79,9 +75,11 @@ public class ChatOrchestrator {
      *
      * @param session  会话（调用方已校验归属）
      * @param userInput 用户输入
+     * @param userId    调用者用户 id；<b>显式携带</b> —— 执行跑在线程池里，
+     *                  那边的 ThreadLocal 是空的（CLAUDE.md §3.1 C5）
      * @param sink      事件出口
      */
-    public void run(ConversationDO session, String userInput, StreamEventSink sink) {
+    public void run(ConversationDO session, String userInput, Long userId, StreamEventSink sink) {
         long startNanos = System.nanoTime();
         String sessionPublicId = session.getPublicId();
         String content = ConversationSupport.content(userInput);
@@ -134,7 +132,7 @@ public class ChatOrchestrator {
                 for (ChatToolCall call : turn.toolCalls()) {
                     toolCallCount++;
                     emitToolCall(sink, call);
-                    ToolOutcome outcome = executeTool(call, toolNames);
+                    ToolOutcome outcome = executeTool(call, toolNames, userId);
                     store.appendTool(session.getId(), call.id(), outcome.displayName(), outcome.toolKey(),
                             outcome.arguments(), outcome.result(), outcome.error());
                     emitToolResult(sink, call, outcome);
@@ -217,14 +215,14 @@ public class ChatOrchestrator {
      * <p><b>工具失败不中断整轮</b> —— 失败原因作为工具结果回灌给模型，
      * 让模型自己决定怎么办。工具一失败就把对话掐断，用户会卡在那儿。
      */
-    private ToolOutcome executeTool(ChatToolCall call, ToolFunctionNames toolNames) {
+    private ToolOutcome executeTool(ChatToolCall call, ToolFunctionNames toolNames, Long userId) {
         ToolSpec spec = toolNames.specOf(call.name());
         if (spec == null) {
             String error = "工具不存在: " + call.name();
             return ToolOutcome.failed(call, call.name(), error);
         }
         Map<String, Object> args = parseArguments(call.arguments());
-        ToolInvokeContext context = ToolInvokeContext.of(currentUsers.currentUserId(), TraceContext.get());
+        ToolInvokeContext context = ToolInvokeContext.of(userId, TraceContext.get());
         try {
             ToolResult result = tools.invoke(context, spec.sourceType(), spec.toolKey(), args);
             if (result.success()) {

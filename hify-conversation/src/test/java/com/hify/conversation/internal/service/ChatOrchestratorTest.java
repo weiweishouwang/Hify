@@ -52,7 +52,6 @@ class ChatOrchestratorTest {
     @Mock ContextBuilder contextBuilder;
     @Mock RunMapper runs;
     @Mock CitationMapper citations;
-    @Mock CurrentUserService currentUsers;
 
     ChatOrchestrator orchestrator;
     RecordingSink sink;
@@ -93,9 +92,8 @@ class ChatOrchestratorTest {
     void setUp() {
         JsonUtils json = new JsonUtils(new ObjectMapper());
         orchestrator = new ChatOrchestrator(agents, chat, tools, store, contextBuilder,
-                runs, citations, currentUsers, json);
+                runs, citations, json);
         sink = new RecordingSink();
-        lenient().when(currentUsers.currentUserId()).thenReturn(42L);
         lenient().when(store.appendUser(any(), anyString())).thenReturn(10L);
         lenient().when(store.appendAssistant(any(), anyString(), any(), any(), any())).thenReturn(11L);
         lenient().when(store.appendTool(any(), anyString(), anyString(), anyString(), anyString(),
@@ -147,7 +145,7 @@ class ChatOrchestratorTest {
             return null;
         }).when(chat).stream(any(), any());
 
-        orchestrator.run(session(), "订单在哪", sink);
+        orchestrator.run(session(), "订单在哪", 42L, sink);
 
         assertThat(sink.textOf("message")).isEqualTo("您好");
         assertThat(sink.countOf("done")).isEqualTo(1);
@@ -176,7 +174,7 @@ class ChatOrchestratorTest {
         }).when(chat).stream(any(), any());
         when(tools.invoke(any(), anyString(), anyString(), any())).thenReturn(ToolResult.ok("2026-11-01"));
 
-        orchestrator.run(session(), "现在几点", sink);
+        orchestrator.run(session(), "现在几点", 42L, sink);
 
         assertThat(sink.countOf("tool_call")).isEqualTo(1);
         assertThat(sink.countOf("tool_result")).isEqualTo(1);
@@ -206,7 +204,7 @@ class ChatOrchestratorTest {
         when(tools.invoke(any(), anyString(), anyString(), any()))
                 .thenReturn(ToolResult.failure("上游不可用"));
 
-        orchestrator.run(session(), "现在几点", sink);
+        orchestrator.run(session(), "现在几点", 42L, sink);
 
         assertThat(sink.countOf("done")).isEqualTo(1);
         verify(store).appendTool(1L, "call_1", "当前时间", "builtin:current_time", "{}", "", "上游不可用");
@@ -224,7 +222,7 @@ class ChatOrchestratorTest {
         }).when(chat).stream(any(), any());
         when(tools.invoke(any(), anyString(), anyString(), any())).thenReturn(ToolResult.ok("ok"));
 
-        orchestrator.run(session(), "现在几点", sink);
+        orchestrator.run(session(), "现在几点", 42L, sink);
 
         // 5 轮工具 + 第 6 轮发现超限，不再执行工具
         verify(tools, org.mockito.Mockito.times(ConversationSupport.MAX_TOOL_ROUNDS))
@@ -241,7 +239,7 @@ class ChatOrchestratorTest {
             throw new BizException(com.hify.shared.exception.ErrorCode.UPSTREAM_ERROR, "上游超时");
         }).when(chat).stream(any(), any());
 
-        assertThatThrownBy(() -> orchestrator.run(session(), "在吗", sink))
+        assertThatThrownBy(() -> orchestrator.run(session(), "在吗", 42L, sink))
                 .isInstanceOf(BizException.class);
         assertThat(sink.countOf("error")).isEqualTo(1);
         assertThat(sink.countOf("done")).isZero();
@@ -262,7 +260,7 @@ class ChatOrchestratorTest {
             return null;
         }).when(chat).stream(any(), any());
 
-        orchestrator.run(session(), "订单在哪", sink);
+        orchestrator.run(session(), "订单在哪", 42L, sink);
 
         verify(citations).insert(any(com.hify.conversation.internal.entity.CitationDO.class));
     }
